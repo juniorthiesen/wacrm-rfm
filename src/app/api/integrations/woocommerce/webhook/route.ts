@@ -173,7 +173,14 @@ export async function POST(request: Request) {
     const signature = request.headers.get("x-wc-webhook-signature");
 
     if (!signature) {
-      console.warn("[woocommerce-webhook] Missing x-wc-webhook-signature header");
+      // WC pings the delivery URL twice on webhook save WITHOUT a
+      // signature (it's testing reachability, not behavior). Both
+      // requests respond 401 — that's the contract — but the warning
+      // pollutes the Vercel dashboard with two angry-looking entries
+      // every time the operator edits the webhook in WP. Demote to
+      // debug; real deliveries always include the header so a
+      // missing one continues to be benign.
+      console.debug("[woocommerce-webhook] Missing x-wc-webhook-signature header (likely a WP save-time ping)");
       return NextResponse.json({ error: "Missing signature" }, { status: 401 });
     }
 
