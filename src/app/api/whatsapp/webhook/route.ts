@@ -177,10 +177,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Process asynchronously so we can ack Meta within their timeout.
-  processWebhook(body).catch((error) => {
+  // Process synchronously, then ack Meta. Earlier this used a
+  // fire-and-forget `processWebhook(body).catch(...)` so we could ack
+  // within Meta's 20 s budget, but on Vercel serverless the Lambda
+  // freezes the instant the handler returns — the background promise
+  // never finished, no Supabase call happened, no logs surfaced. The
+  // node-server runtime also handles awaiting fine. Real workloads
+  // (DB lookup + decrypt + N message inserts + automations) finish in
+  // well under Meta's timeout, and any longer runs would risk a Meta
+  // retry anyway, which we already handle idempotently via
+  // meta_message_id.
+  try {
+    await processWebhook(body)
+  } catch (error) {
     console.error('Error processing webhook:', error)
-  })
+  }
 
   return NextResponse.json({ status: 'received' }, { status: 200 })
 }
@@ -665,16 +676,27 @@ async function processMessage(
   // listens to only one trigger runs only when that trigger matches.
   if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
   if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
-  for (const triggerType of automationTriggers) {
-    runAutomationsForTrigger({
-      userId,
-      triggerType,
-      contactId: contactRecord.id,
-      context: {
-        message_text: inboundText,
-        conversation_id: conversation.id,
-      },
-    }).catch((err) => console.error('[automations] dispatch failed:', err))
+  // Await all triggers in parallel so the Lambda doesn't freeze before
+  // they run (see the fire-and-forget gotcha at the top-level POST).
+  // Promise.allSettled keeps the same "one failure doesn't block the
+  // others" semantics the previous `.catch` swallowed.
+  const automationResults = await Promise.allSettled(
+    automationTriggers.map((triggerType) =>
+      runAutomationsForTrigger({
+        userId,
+        triggerType,
+        contactId: contactRecord.id,
+        context: {
+          message_text: inboundText,
+          conversation_id: conversation.id,
+        },
+      })
+    )
+  )
+  for (const result of automationResults) {
+    if (result.status === 'rejected') {
+      console.error('[automations] dispatch failed:', result.reason)
+    }
   }
 }
 
