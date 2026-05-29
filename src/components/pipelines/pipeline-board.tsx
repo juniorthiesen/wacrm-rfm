@@ -19,6 +19,9 @@ import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 
+import { useTranslation } from "@/hooks/use-translation";
+import { translateStageName } from "@/lib/i18n/translations";
+
 interface PipelineBoardProps {
   stages: PipelineStage[];
   deals: Deal[];
@@ -27,10 +30,11 @@ interface PipelineBoardProps {
   onEditDeal: (deal: Deal) => void;
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
+function formatCurrency(value: number, locale: string) {
+  const isPt = locale.startsWith("pt");
+  return new Intl.NumberFormat(isPt ? "pt-BR" : locale, {
     style: "currency",
-    currency: "USD",
+    currency: isPt ? "BRL" : "USD",
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
@@ -177,6 +181,7 @@ function StageColumn({
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
 }) {
+  const { locale, t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
 
   return (
@@ -194,13 +199,13 @@ function StageColumn({
       />
       <div className="flex items-center justify-between pt-3">
         <h3 className="truncate text-sm font-semibold text-white">
-          {stage.name}
+          {translateStageName(stage.name, t)}
         </h3>
         <span className="shrink-0 rounded-full bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-300">
           {deals.length}
         </span>
       </div>
-      <p className="text-xs text-slate-400">{formatCurrency(totalValue)}</p>
+      <p className="text-xs text-slate-400">{formatCurrency(totalValue, locale)}</p>
 
       <div
         ref={setNodeRef}
@@ -212,7 +217,7 @@ function StageColumn({
       >
         {deals.length === 0 ? (
           <div className="flex flex-1 items-center justify-center rounded-lg border-2 border-dashed border-slate-700 py-10 text-xs text-slate-500">
-            Drop a deal here
+            {t("pipelines.dropDealHere")}
           </div>
         ) : (
           deals.map((deal) => (
@@ -233,7 +238,7 @@ function StageColumn({
         className="mt-3 w-full justify-start border border-dashed border-slate-700 bg-transparent text-slate-400 hover:border-slate-600 hover:bg-slate-800 hover:text-white"
       >
         <Plus className="mr-1 h-3 w-3" />
-        Add Deal
+        {t("pipelines.addDeal")}
       </Button>
     </div>
   );

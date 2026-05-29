@@ -64,4 +64,12 @@ export interface ActivityItem {
   at: string
   /** Optional deep-link for the whole row (not all items have a target). */
   href?: string
+  meta?: {
+    who?: string
+    title?: string
+    stage?: string
+    name?: string
+    count?: number
+    status?: string
+  }
 }

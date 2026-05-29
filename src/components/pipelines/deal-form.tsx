@@ -30,6 +30,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@/hooks/use-translation";
+import { translateStageName } from "@/lib/i18n/translations";
 
 interface DealFormProps {
   open: boolean;
@@ -51,10 +53,11 @@ export function DealForm({
   onSaved,
 }: DealFormProps) {
   const supabase = createClient();
+  const { locale, t } = useTranslation();
 
   const [title, setTitle] = useState("");
   const [value, setValue] = useState("");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState(locale === "pt-BR" ? "BRL" : "USD");
   const [contactId, setContactId] = useState("");
   const [stageId, setStageId] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
@@ -92,14 +95,14 @@ export function DealForm({
     } else {
       setTitle("");
       setValue("");
-      setCurrency("USD");
+      setCurrency(locale === "pt-BR" ? "BRL" : "USD");
       setContactId("");
       setStageId(defaultStageId || stages[0]?.id || "");
       setAssignedTo("");
       setExpectedCloseDate("");
       setNotes("");
     }
-  }, [open, deal, defaultStageId, stages]);
+  }, [open, deal, defaultStageId, stages, locale]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Load supporting data once the sheet is open
@@ -148,7 +151,7 @@ export function DealForm({
 
   async function handleSave() {
     if (!title.trim() || !contactId || !stageId) {
-      toast.error("Title, contact, and stage are required");
+      toast.error(t("pipelines.requiredFields"));
       return;
     }
     setSaving(true);
@@ -171,7 +174,7 @@ export function DealForm({
         .update(payload)
         .eq("id", deal.id);
       if (error) {
-        toast.error("Failed to save deal");
+        toast.error(t("pipelines.failedToSave"));
         setSaving(false);
         return;
       }
@@ -181,7 +184,7 @@ export function DealForm({
       } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) {
-        toast.error("Not signed in");
+        toast.error(t("pipelines.notSignedIn"));
         setSaving(false);
         return;
       }
@@ -189,14 +192,14 @@ export function DealForm({
         .from("deals")
         .insert({ ...payload, user_id: user.id, status: "open" });
       if (error) {
-        toast.error("Failed to create deal");
+        toast.error(t("pipelines.failedToCreate"));
         setSaving(false);
         return;
       }
     }
 
     setSaving(false);
-    toast.success(deal ? "Deal updated" : "Deal created");
+    toast.success(deal ? t("pipelines.dealUpdated") : t("pipelines.dealCreated"));
     onOpenChange(false);
     onSaved();
   }
@@ -210,11 +213,15 @@ export function DealForm({
       .eq("id", deal.id);
     setStatusAction(null);
     if (error) {
-      toast.error("Failed to update deal status");
+      toast.error(t("pipelines.failedToUpdateStatus"));
       return;
     }
     toast.success(
-      status === "won" ? "Marked as won" : status === "lost" ? "Marked as lost" : "Deal reopened",
+      status === "won"
+        ? t("pipelines.markedAsWon")
+        : status === "lost"
+        ? t("pipelines.markedAsLost")
+        : t("pipelines.dealReopened"),
     );
     onOpenChange(false);
     onSaved();
@@ -226,10 +233,10 @@ export function DealForm({
     const { error } = await supabase.from("deals").delete().eq("id", deal.id);
     setDeleting(false);
     if (error) {
-      toast.error("Failed to delete deal");
+      toast.error(t("pipelines.failedToDelete"));
       return;
     }
-    toast.success("Deal deleted");
+    toast.success(t("pipelines.dealDeleted"));
     setConfirmDelete(false);
     onOpenChange(false);
     onSaved();
@@ -244,29 +251,29 @@ export function DealForm({
         <div className="flex h-full flex-col">
           <SheetHeader className="border-b border-slate-700/50 p-4">
             <SheetTitle className="text-white">
-              {deal ? "Edit Deal" : "New Deal"}
+              {deal ? t("pipelines.editDealTitle") : t("pipelines.newDealTitle")}
             </SheetTitle>
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             <div className="grid gap-2">
-              <Label className="text-slate-300">Title</Label>
+              <Label className="text-slate-300">{t("pipelines.dealTitleLabel")}</Label>
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Deal title"
+                placeholder={t("pipelines.dealTitlePlaceholder")}
                 className="border-slate-700 bg-slate-800 text-white"
               />
             </div>
 
             <div className="grid gap-2">
-              <Label className="text-slate-300">Contact</Label>
+              <Label className="text-slate-300">{t("pipelines.contactLabel")}</Label>
               <select
                 value={contactId}
                 onChange={(e) => setContactId(e.target.value)}
                 className="h-9 w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 text-sm text-white outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               >
-                <option value="">Select a contact</option>
+                <option value="">{t("pipelines.selectContact")}</option>
                 {contacts.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name || c.phone}
@@ -280,14 +287,14 @@ export function DealForm({
                   className="mt-1 inline-flex items-center gap-1.5 self-start rounded-md bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
                 >
                   <MessageSquare className="h-3 w-3" />
-                  Link to Conversation
+                  {t("pipelines.linkToConversation")}
                 </Link>
               )}
             </div>
 
             <div className="grid grid-cols-[1fr_110px] gap-3">
               <div className="grid gap-2">
-                <Label className="text-slate-300">Value</Label>
+                <Label className="text-slate-300">{t("pipelines.valueLabel")}</Label>
                 <div className="relative">
                   <DollarSign className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                   <Input
@@ -300,21 +307,22 @@ export function DealForm({
                 </div>
               </div>
               <div className="grid gap-2">
-                <Label className="text-slate-300">Currency</Label>
+                <Label className="text-slate-300">{t("pipelines.currencyLabel")}</Label>
                 <select
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value)}
                   className="h-9 w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 text-sm text-white outline-none focus:border-primary"
                 >
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="GBP">GBP</option>
+                  <option value="BRL">BRL (R$)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
                 </select>
               </div>
             </div>
 
             <div className="grid gap-2">
-              <Label className="text-slate-300">Expected Close Date</Label>
+              <Label className="text-slate-300">{t("pipelines.closeDateLabel")}</Label>
               <Input
                 type="date"
                 value={expectedCloseDate}
@@ -324,7 +332,7 @@ export function DealForm({
             </div>
 
             <div className="grid gap-2">
-              <Label className="text-slate-300">Stage</Label>
+              <Label className="text-slate-300">{t("pipelines.stageLabel")}</Label>
               <select
                 value={stageId}
                 onChange={(e) => setStageId(e.target.value)}
@@ -332,20 +340,20 @@ export function DealForm({
               >
                 {stages.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {translateStageName(s.name, t)}
                   </option>
                 ))}
               </select>
             </div>
 
             <div className="grid gap-2">
-              <Label className="text-slate-300">Assigned To</Label>
+              <Label className="text-slate-300">{t("inbox.assignee")}</Label>
               <select
                 value={assignedTo}
                 onChange={(e) => setAssignedTo(e.target.value)}
                 className="h-9 w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 text-sm text-white outline-none focus:border-primary"
               >
-                <option value="">Unassigned</option>
+                <option value="">{t("inbox.unassigned")}</option>
                 {profiles.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.full_name || p.email}
@@ -355,11 +363,11 @@ export function DealForm({
             </div>
 
             <div className="grid gap-2">
-              <Label className="text-slate-300">Notes</Label>
+              <Label className="text-slate-300">{t("pipelines.notesLabel")}</Label>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add notes..."
+                placeholder={t("pipelines.notesPlaceholder")}
                 className="min-h-[100px] border-slate-700 bg-slate-800 text-white"
               />
             </div>
@@ -367,7 +375,7 @@ export function DealForm({
             {deal && (
               <div className="space-y-2 rounded-lg border border-slate-700 bg-slate-900/50 p-3">
                 <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                  Status
+                  {t("common.status")}
                 </p>
                 <div className="flex gap-2">
                   <Button
@@ -381,7 +389,7 @@ export function DealForm({
                     ) : (
                       <>
                         <Check className="mr-1 h-4 w-4" />
-                        Mark as Won
+                        {t("pipelines.markAsWon")}
                       </>
                     )}
                   </Button>
@@ -396,7 +404,7 @@ export function DealForm({
                     ) : (
                       <>
                         <X className="mr-1 h-4 w-4" />
-                        Mark as Lost
+                        {t("pipelines.markAsLost")}
                       </>
                     )}
                   </Button>
@@ -409,7 +417,7 @@ export function DealForm({
                     disabled={!!statusAction}
                     className="w-full text-slate-400 hover:text-white"
                   >
-                    Reopen deal
+                    {t("pipelines.reopenDeal")}
                   </Button>
                 )}
               </div>
@@ -423,21 +431,25 @@ export function DealForm({
                 onClick={() => onOpenChange(false)}
                 className="flex-1 border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800"
               >
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 onClick={handleSave}
                 disabled={saving || !title.trim() || !contactId || !stageId}
                 className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                {saving ? "Saving..." : deal ? "Save Changes" : "Create Deal"}
+                {saving
+                  ? t("common.saving")
+                  : deal
+                  ? t("contacts.saveChanges")
+                  : t("pipelines.addDeal")}
               </Button>
             </div>
 
             {deal &&
               (confirmDelete ? (
                 <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">
-                  <span className="text-red-300">Delete this deal?</span>
+                  <span className="text-red-300">{t("pipelines.deleteConfirmShort")}</span>
                   <div className="flex gap-1">
                     <button
                       type="button"
@@ -445,7 +457,7 @@ export function DealForm({
                       disabled={deleting}
                       className="rounded px-2 py-1 text-slate-300 hover:bg-slate-800"
                     >
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                     <button
                       type="button"
@@ -453,7 +465,7 @@ export function DealForm({
                       disabled={deleting}
                       className="rounded bg-red-600 px-2 py-1 font-medium text-white hover:bg-red-700 disabled:opacity-50"
                     >
-                      {deleting ? "Deleting..." : "Confirm"}
+                      {deleting ? t("common.deleting") : t("common.confirm")}
                     </button>
                   </div>
                 </div>
@@ -464,7 +476,7 @@ export function DealForm({
                   className="mt-3 flex w-full items-center justify-center gap-1 text-xs text-red-400 hover:text-red-300"
                 >
                   <Trash2 className="h-3 w-3" />
-                  Delete Deal
+                  {t("pipelines.deleteDeal")}
                 </button>
               ))}
           </div>

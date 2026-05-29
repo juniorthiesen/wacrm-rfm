@@ -1,3 +1,4 @@
+// skeleton components
 import { cn } from '@/lib/utils'
 
 /**

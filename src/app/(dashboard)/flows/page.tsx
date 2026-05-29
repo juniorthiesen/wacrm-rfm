@@ -18,6 +18,7 @@ import {
   FileText,
 } from "lucide-react";
 
+import { useTranslation } from "@/hooks/use-translation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -52,12 +53,6 @@ interface FlowRow {
   updated_at: string;
 }
 
-const STATUS_LABELS: Record<FlowRow["status"], string> = {
-  draft: "Draft",
-  active: "Active",
-  archived: "Archived",
-};
-
 const STATUS_COLORS: Record<FlowRow["status"], string> = {
   draft: "border-slate-700 bg-slate-800 text-slate-300",
   active: "border-emerald-600/40 bg-emerald-500/10 text-emerald-300",
@@ -81,6 +76,7 @@ const TEMPLATE_ICONS = {
 
 export default function FlowsPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [flows, setFlows] = useState<FlowRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -201,19 +197,18 @@ export default function FlowsPage() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold text-white">Flows</h1>
+            <h1 className="text-2xl font-semibold text-white">{t("flows.title")}</h1>
             <span className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
               Beta
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-400">
-            Build branching, button-driven WhatsApp conversations. Useful for
-            menus, FAQs, and triage before a human steps in.
+            {t("flows.subtitle")}
           </p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
           <Plus className="h-4 w-4" />
-          New flow
+          {t("flows.newFlow")}
         </Button>
       </header>
 
@@ -233,13 +228,9 @@ export default function FlowsPage() {
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        {/* `sm:max-w-4xl` not `max-w-4xl` — shadcn's DialogContent has
-            `sm:max-w-sm` baked into its default classes. Without the
-            sm: prefix our override applies at base only and the
-            sm-scoped 384px wins at every real desktop breakpoint. */}
         <DialogContent className="sm:max-w-4xl bg-slate-900 text-slate-100">
           <DialogHeader>
-            <DialogTitle>Create a new flow</DialogTitle>
+            <DialogTitle>{t("flows.newFlow")}</DialogTitle>
             <DialogDescription className="text-slate-400">
               Start from a template or build from scratch.
             </DialogDescription>
@@ -251,25 +242,25 @@ export default function FlowsPage() {
                 Start from a template
               </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {templates.map((t) => {
-                  const Icon = TEMPLATE_ICONS[t.icon] ?? FileText;
+                {templates.map((tItem) => {
+                  const Icon = TEMPLATE_ICONS[tItem.icon] ?? FileText;
                   return (
                     <button
-                      key={t.slug}
+                      key={tItem.slug}
                       type="button"
-                      onClick={() => handleUseTemplate(t.slug)}
+                      onClick={() => handleUseTemplate(tItem.slug)}
                       disabled={creating}
                       className="flex flex-col gap-2.5 rounded-lg border border-slate-800 bg-slate-950 p-4 text-left transition-colors hover:border-primary/40 hover:bg-slate-800 disabled:opacity-50"
                     >
                       <Icon className="h-5 w-5 text-primary" />
                       <span className="text-sm font-semibold text-white">
-                        {t.name}
+                        {tItem.name}
                       </span>
                       <span className="text-xs leading-relaxed text-slate-400">
-                        {t.description}
+                        {tItem.description}
                       </span>
                       <span className="mt-auto border-t border-slate-800 pt-2 text-[11px] text-slate-500">
-                        {t.node_count} {t.node_count === 1 ? "node" : "nodes"}
+                        {tItem.node_count} nodes
                       </span>
                     </button>
                   );
@@ -298,12 +289,13 @@ export default function FlowsPage() {
               variant="ghost"
               onClick={() => setCreateOpen(false)}
               disabled={creating}
+              className="text-slate-300 hover:bg-slate-800"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleCreate} disabled={!newName.trim() || creating}>
               {creating && <Loader2 className="h-4 w-4 animate-spin" />}
-              Create blank flow
+              {t("flows.newFlow")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -313,6 +305,7 @@ export default function FlowsPage() {
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-700 bg-slate-900/50 px-6 py-16 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
@@ -322,13 +315,11 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
         No flows yet
       </h2>
       <p className="mt-1 max-w-md text-sm text-slate-400">
-        Build your first conversation — a welcome menu, an order lookup, an FAQ
-        bot. Customers tap buttons; the bot routes them to the right answer (or
-        the right agent).
+        {t("flows.subtitle")}
       </p>
       <Button onClick={onCreate} className="mt-5">
         <Plus className="h-4 w-4" />
-        Create your first flow
+        {t("flows.newFlow")}
       </Button>
     </div>
   );
@@ -343,6 +334,7 @@ function FlowCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   const triggerSummary = describeTrigger(flow);
   const StatusIcon =
     flow.status === "active"
@@ -350,6 +342,13 @@ function FlowCard({
       : flow.status === "archived"
         ? Archive
         : PauseCircle;
+
+  const STATUS_LABELS: Record<FlowRow["status"], string> = {
+    draft: t("broadcasts.draft"),
+    active: t("common.active"),
+    archived: "Archived",
+  };
+
   return (
     <div className="flex flex-col rounded-lg border border-slate-800 bg-slate-900 p-4 transition-colors hover:border-slate-700">
       <div className="flex items-start justify-between gap-2">
@@ -378,14 +377,14 @@ function FlowCard({
       <div className="mt-4 flex items-center gap-3 text-[11px] text-slate-500">
         <span className="inline-flex items-center gap-1">
           <MessageSquare className="h-3 w-3" />
-          {flow.execution_count} {flow.execution_count === 1 ? "run" : "runs"}
+          {flow.execution_count} runs
         </span>
       </div>
 
       <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-800 pt-3">
         <Button variant="ghost" size="sm" onClick={onEdit}>
           <Pencil className="h-3.5 w-3.5" />
-          Edit
+          {t("common.edit")}
         </Button>
         <Button
           variant="ghost"
@@ -394,7 +393,7 @@ function FlowCard({
           className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
         >
           <Trash2 className="h-3.5 w-3.5" />
-          Delete
+          {t("common.delete")}
         </Button>
       </div>
     </div>

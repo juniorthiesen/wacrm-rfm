@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { useTranslation } from '@/hooks/use-translation';
 import { Broadcast } from '@/types';
 import { Button } from '@/components/ui/button';
 import {
@@ -56,6 +57,7 @@ function RateCell({
 
 export default function BroadcastsPage() {
   const router = useRouter();
+  const { t, locale } = useTranslation();
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -176,9 +178,9 @@ export default function BroadcastsPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Broadcasts</h1>
+          <h1 className="text-2xl font-bold text-white">{t("broadcasts.title")}</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Send bulk messages to your contacts using approved templates.
+            {t("broadcasts.subtitle")}
           </p>
         </div>
         <Button
@@ -186,23 +188,23 @@ export default function BroadcastsPage() {
           className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" />
-          New Broadcast
+          {t("broadcasts.newBroadcast")}
         </Button>
       </div>
 
       {broadcasts.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900">
           <Radio className="mb-3 h-10 w-10 text-slate-600" />
-          <p className="text-sm font-medium text-white">No broadcasts yet</p>
+          <p className="text-sm font-medium text-white">{t("common.none")}</p>
           <p className="mt-1 text-xs text-slate-400">
-            Create your first broadcast to reach your contacts at scale.
+            {t("broadcasts.subtitle")}
           </p>
           <Button
             onClick={() => router.push('/broadcasts/new')}
             className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" />
-            New Broadcast
+            {t("broadcasts.newBroadcast")}
           </Button>
         </div>
       ) : (
@@ -210,15 +212,15 @@ export default function BroadcastsPage() {
           <Table>
             <TableHeader>
               <TableRow className="border-slate-800 hover:bg-transparent">
-                <TableHead className="text-slate-400">Name</TableHead>
-                <TableHead className="hidden text-slate-400 md:table-cell">Template</TableHead>
+                <TableHead className="text-slate-400">{t("broadcasts.nameCol")}</TableHead>
+                <TableHead className="hidden text-slate-400 md:table-cell">{t("broadcasts.templateCol")}</TableHead>
                 <TableHead className="hidden text-right text-slate-400 sm:table-cell">
-                  Recipients
+                  {t("broadcasts.recipientsLabel")}
                 </TableHead>
                 <TableHead className="hidden text-slate-400 lg:table-cell">Delivery</TableHead>
                 <TableHead className="hidden text-slate-400 lg:table-cell">Read</TableHead>
-                <TableHead className="text-slate-400">Status</TableHead>
-                <TableHead className="hidden text-slate-400 sm:table-cell">Date</TableHead>
+                <TableHead className="text-slate-400">{t("broadcasts.statusCol")}</TableHead>
+                <TableHead className="hidden text-slate-400 sm:table-cell">{t("broadcasts.createdCol")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -263,11 +265,11 @@ export default function BroadcastsPage() {
                             <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-yellow-400" />
                           </span>
                         )}
-                        {status.label}
+                        {t("broadcasts." + broadcast.status)}
                       </span>
                     </TableCell>
                     <TableCell className="hidden text-slate-400 sm:table-cell">
-                      {new Date(broadcast.created_at).toLocaleDateString()}
+                      {new Date(broadcast.created_at).toLocaleDateString(locale === 'pt-BR' ? 'pt-BR' : 'en-US')}
                     </TableCell>
                   </TableRow>
                 );

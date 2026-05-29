@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   X,
 } from 'lucide-react';
+import { useTranslation } from '@/hooks/use-translation';
 
 type AudienceType = 'all' | 'tags' | 'custom_field' | 'csv';
 type CustomFieldOperator = 'is' | 'is_not' | 'contains';
@@ -39,56 +40,52 @@ interface Step2Props {
   onBack: () => void;
 }
 
-const audienceOptions: {
-  type: AudienceType;
-  label: string;
-  description: string;
-  icon: typeof Users;
-}[] = [
-  {
-    type: 'all',
-    label: 'All Contacts',
-    description: 'Send to every contact in your database',
-    icon: Users,
-  },
-  {
-    type: 'tags',
-    label: 'Filter by Tags',
-    description: 'Target contacts with specific tags',
-    icon: Tags,
-  },
-  {
-    type: 'custom_field',
-    label: 'Custom Field',
-    description: 'Filter by a custom field value',
-    icon: Filter,
-  },
-  {
-    type: 'csv',
-    label: 'Upload CSV',
-    description: 'Upload a list of phone numbers',
-    icon: Upload,
-  },
-];
-
-const OPERATOR_OPTIONS: { value: CustomFieldOperator; label: string }[] = [
-  { value: 'is', label: 'is' },
-  { value: 'is_not', label: 'is not' },
-  { value: 'contains', label: 'contains' },
-];
-
 export function Step2SelectAudience({
   audience,
   onUpdate,
   onNext,
   onBack,
 }: Step2Props) {
+  const { t } = useTranslation();
   const [tags, setTags] = useState<Tag[]>([]);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [loadingTags, setLoadingTags] = useState(false);
   const [loadingFields, setLoadingFields] = useState(false);
   const [estimatedCount, setEstimatedCount] = useState<number | null>(null);
   const [loadingCount, setLoadingCount] = useState(false);
+
+  const audienceOptions = [
+    {
+      type: 'all' as AudienceType,
+      label: t('broadcasts.audienceTypes.allLabel'),
+      description: t('broadcasts.audienceTypes.allDesc'),
+      icon: Users,
+    },
+    {
+      type: 'tags' as AudienceType,
+      label: t('broadcasts.audienceTypes.tagsLabel'),
+      description: t('broadcasts.audienceTypes.tagsDesc'),
+      icon: Tags,
+    },
+    {
+      type: 'custom_field' as AudienceType,
+      label: t('broadcasts.audienceTypes.fieldLabel'),
+      description: t('broadcasts.audienceTypes.fieldDesc'),
+      icon: Filter,
+    },
+    {
+      type: 'csv' as AudienceType,
+      label: t('broadcasts.audienceTypes.csvLabel'),
+      description: t('broadcasts.audienceTypes.csvDesc'),
+      icon: Upload,
+    },
+  ];
+
+  const OPERATOR_OPTIONS = [
+    { value: 'is' as CustomFieldOperator, label: t('broadcasts.operators.is') },
+    { value: 'is_not' as CustomFieldOperator, label: t('broadcasts.operators.isNot') },
+    { value: 'contains' as CustomFieldOperator, label: t('broadcasts.operators.contains') },
+  ];
 
   // Tags are used both by the primary "Filter by Tags" audience type
   // AND by the exclude-list below — so always load once on mount.
@@ -249,9 +246,9 @@ export function Step2SelectAudience({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-white">Select Audience</h2>
+        <h2 className="text-lg font-semibold text-white">{t('broadcasts.step2Title')}</h2>
         <p className="mt-1 text-sm text-slate-400">
-          Choose who will receive this broadcast.
+          {t('broadcasts.step2Desc')}
         </p>
       </div>
 
@@ -305,12 +302,12 @@ export function Step2SelectAudience({
 
       {audience.type === 'tags' && (
         <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
-          <p className="mb-3 text-sm font-medium text-white">Select Tags</p>
+          <p className="mb-3 text-sm font-medium text-white">{t('broadcasts.selectTagsLabel')}</p>
           {loadingTags ? (
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           ) : tags.length === 0 ? (
             <p className="text-xs text-slate-400">
-              No tags found. Create tags in Settings.
+              {t('broadcasts.noTagsFound')}
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -341,12 +338,12 @@ export function Step2SelectAudience({
 
       {audience.type === 'custom_field' && (
         <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4">
-          <p className="text-sm font-medium text-white">Custom Field Filter</p>
+          <p className="text-sm font-medium text-white">{t('broadcasts.customFieldFilterLabel')}</p>
           {loadingFields ? (
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           ) : customFields.length === 0 ? (
             <p className="text-xs text-slate-400">
-              No custom fields defined. Create one in Settings → Custom Fields.
+              {t('broadcasts.noCustomFields')}
             </p>
           ) : (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_140px_minmax(0,1fr)]">
@@ -355,7 +352,7 @@ export function Step2SelectAudience({
                 onChange={(e) => updateCustomField({ fieldId: e.target.value })}
                 className="h-9 rounded-lg border border-slate-700 bg-slate-800 px-2.5 text-sm text-white outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               >
-                <option value="">Select field…</option>
+                <option value="">{t('broadcasts.selectFieldPlaceholder')}</option>
                 {customFields.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.field_name}
@@ -381,7 +378,7 @@ export function Step2SelectAudience({
                 type="text"
                 value={audience.customField?.value ?? ''}
                 onChange={(e) => updateCustomField({ value: e.target.value })}
-                placeholder="Value"
+                placeholder={t('broadcasts.valuePlaceholder')}
                 className="h-9 rounded-lg border border-slate-700 bg-slate-800 px-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-primary focus:ring-1 focus:ring-primary"
               />
             </div>
@@ -394,12 +391,12 @@ export function Step2SelectAudience({
         <div className="mb-3 flex items-center gap-2">
           <X className="h-4 w-4 text-red-400" />
           <p className="text-sm font-medium text-white">
-            Exclude contacts with these tags
+            {t('broadcasts.excludeTagsLabel')}
           </p>
-          <span className="text-xs text-slate-500">(optional)</span>
+          <span className="text-xs text-slate-500">{t('broadcasts.optionalLabel')}</span>
         </div>
         {tags.length === 0 ? (
-          <p className="text-xs text-slate-500">No tags available.</p>
+          <p className="text-xs text-slate-500">{t('broadcasts.noTagsFound')}</p>
         ) : (
           <div className="flex flex-wrap gap-2">
             {tags.map((tag) => {
@@ -428,11 +425,11 @@ export function Step2SelectAudience({
 
       {/* Audience Summary */}
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
-        <p className="mb-2 text-sm font-medium text-white">Audience Summary</p>
+        <p className="mb-2 text-sm font-medium text-white">{t('broadcasts.audienceSummaryLabel')}</p>
         {loadingCount ? (
           <div className="flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            <span className="text-xs text-slate-400">Calculating…</span>
+            <span className="text-xs text-slate-400">{t('broadcasts.calculating')}</span>
           </div>
         ) : estimatedCount !== null ? (
           <div className="flex items-center gap-2">
@@ -440,11 +437,11 @@ export function Step2SelectAudience({
             <span className="text-sm text-white">
               {estimatedCount.toLocaleString()}
             </span>
-            <span className="text-xs text-slate-400">estimated recipients</span>
+            <span className="text-xs text-slate-400">{t('broadcasts.estimatedRecipients')}</span>
           </div>
         ) : (
           <p className="text-xs text-slate-500">
-            Select an audience type to see the estimate.
+            {t('broadcasts.selectAudienceTypeHint')}
           </p>
         )}
       </div>
@@ -456,14 +453,14 @@ export function Step2SelectAudience({
           className="border-slate-700 text-slate-300"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back
+          {t('common.back')}
         </Button>
         <Button
           onClick={onNext}
           disabled={!isValid}
           className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          Next
+          {t('broadcasts.nextStep')}
           <ArrowRight className="h-4 w-4" />
         </Button>
       </div>

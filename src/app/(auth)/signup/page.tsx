@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { useTranslation } from "@/hooks/use-translation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +25,7 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const supabase = createClient();
+  const { t } = useTranslation();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,12 +72,11 @@ export default function SignupPage() {
               <CheckCircle className="h-6 w-6 text-primary" />
             </div>
             <CardTitle className="text-xl text-white">
-              Check your email
+              {t("auth.checkEmailTitle")}
             </CardTitle>
             <CardDescription className="text-slate-400">
-              We&apos;ve sent a confirmation link to{" "}
-              <span className="text-white">{email}</span>. Please check your
-              inbox and click the link to verify your account.
+              {t("auth.checkEmailDesc")}{" "}
+              <span className="text-white">({email})</span>
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -84,7 +85,7 @@ export default function SignupPage() {
                 variant="outline"
                 className="w-full border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
               >
-                Back to sign in
+                {t("auth.backToLogin")}
               </Button>
             </Link>
           </CardContent>
@@ -100,9 +101,9 @@ export default function SignupPage() {
           <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
             <MessageSquare className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle className="text-xl text-white">Create account</CardTitle>
+          <CardTitle className="text-xl text-white">{t("auth.signUpButton")}</CardTitle>
           <CardDescription className="text-slate-400">
-            Get started with CRM Template for WhatsApp
+            {t("auth.signupSubtitle")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -115,7 +116,7 @@ export default function SignupPage() {
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="fullName" className="text-slate-300">
-                Full name
+                {t("auth.fullNameLabel")}
               </Label>
               <Input
                 id="fullName"
@@ -130,7 +131,7 @@ export default function SignupPage() {
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="email" className="text-slate-300">
-                Email
+                {t("auth.emailLabel")}
               </Label>
               <Input
                 id="email"
@@ -145,12 +146,12 @@ export default function SignupPage() {
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="password" className="text-slate-300">
-                Password
+                {t("auth.passwordLabel")}
               </Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="At least 6 characters"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -160,12 +161,12 @@ export default function SignupPage() {
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="confirmPassword" className="text-slate-300">
-                Confirm password
+                {t("auth.confirmPasswordLabel")}
               </Label>
               <Input
                 id="confirmPassword"
                 type="password"
-                placeholder="Repeat your password"
+                placeholder="••••••••"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -178,17 +179,17 @@ export default function SignupPage() {
               disabled={loading}
               className="mt-2 h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              {loading ? "Creating account..." : "Create account"}
+              {loading ? t("auth.signingUp") : t("auth.signUpButton")}
             </Button>
           </form>
 
           <p className="mt-6 text-center text-sm text-slate-400">
-            Already have an account?{" "}
+            {t("auth.haveAccount")}{" "}
             <Link
               href="/login"
               className="text-primary hover:text-primary/80"
             >
-              Sign in
+              {t("auth.signInButton")}
             </Link>
           </p>
         </CardContent>

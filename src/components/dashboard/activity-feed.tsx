@@ -1,3 +1,4 @@
+// activity-feed component
 "use client"
 
 import Link from 'next/link'
@@ -15,6 +16,8 @@ import type { ActivityItem, ActivityKind } from '@/lib/dashboard/types'
 import { cn } from '@/lib/utils'
 import { EmptyState } from './empty-state'
 import { Skeleton } from './skeleton'
+
+import { useTranslation } from '@/hooks/use-translation'
 
 interface ActivityFeedProps {
   items: ActivityItem[] | null
@@ -39,6 +42,7 @@ const KIND_THEME: Record<ActivityKind, KindTheme> = {
 }
 
 export function ActivityFeed({ items, loading }: ActivityFeedProps) {
+  const { locale, t } = useTranslation()
   // Start at 5 — a quick scan of the most recent events without
   // dominating vertical real estate. User expands explicitly via the
   // footer control when they want deeper history.
@@ -56,12 +60,12 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900">
       <header className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
-        <h2 className="text-sm font-semibold text-white">Recent Activity</h2>
+        <h2 className="text-sm font-semibold text-white">{t('dashboard.recentActivity')}</h2>
         <Link
           href="/inbox"
           className="text-xs font-medium text-primary hover:text-primary/80"
         >
-          View all →
+          {t('dashboard.viewAll')}
         </Link>
       </header>
 
@@ -75,8 +79,8 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
         <div className="p-5">
           <EmptyState
             icon={Inbox}
-            title="No activity yet"
-            hint="Activity from messages, deals, broadcasts, and automations will appear here."
+            title={t('dashboard.noActivityYet')}
+            hint={t('dashboard.noActivityHint')}
           />
         </div>
       ) : (
@@ -99,10 +103,10 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
-                    {it.text}
+                    {formatActivityItem(it, t, locale)}
                   </span>
                   <span className="flex-shrink-0 text-xs text-slate-500 tabular-nums">
-                    {relativeTime(it.at)}
+                    {relativeTime(it.at, locale, t)}
                   </span>
                 </div>
               )
@@ -121,11 +125,13 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
           </ul>
           <footer className="flex items-center justify-between border-t border-slate-800 px-5 py-3 text-xs">
             <span className="text-slate-500 tabular-nums">
-              Showing {visible.length} of {totalLoaded}
+              {t('dashboard.showingOf')
+                .replace('{count}', String(visible.length))
+                .replace('{total}', String(totalLoaded))}
               {totalLoaded === 50 ? '+' : ''}
             </span>
             <div className="flex items-center gap-1">
-              <span className="mr-1 text-slate-500">Show</span>
+              <span className="mr-1 text-slate-500">{t('dashboard.show')}</span>
               {PAGE_SIZES.map((size, i) => {
                 const disabled = !isSizeUseful(size, i)
                 return (
@@ -154,13 +160,72 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
   )
 }
 
-function relativeTime(iso: string): string {
+function formatActivityItem(it: ActivityItem, t: (k: string) => string, locale: string): string {
+  if (!it.meta) return it.text
+  
+  const who = it.meta.who || (locale.startsWith('pt') ? 'Desconhecido' : 'Unknown')
+  const defaultWho = it.meta.who || (locale.startsWith('pt') ? 'um contato' : 'a contact')
+  
+  switch (it.kind) {
+    case 'message':
+      return t('dashboard.activity.message').replace('{who}', who)
+    case 'contact':
+      return t('dashboard.activity.contact').replace('{who}', who)
+    case 'deal':
+      if (it.meta.stage) {
+        return t('dashboard.activity.dealInStage')
+          .replace('{title}', it.meta.title || '')
+          .replace('{stage}', it.meta.stage)
+      }
+      return t('dashboard.activity.dealUpdated').replace('{title}', it.meta.title || '')
+    case 'broadcast':
+      if (it.meta.status === 'sent') {
+        return t('dashboard.activity.broadcastSent')
+          .replace('{name}', it.meta.name || '')
+          .replace('{count}', String(it.meta.count || 0))
+      }
+      const statusText = it.meta.status === 'draft'
+        ? (locale.startsWith('pt') ? 'rascunho' : 'draft')
+        : it.meta.status === 'scheduled'
+        ? (locale.startsWith('pt') ? 'agendado' : 'scheduled')
+        : it.meta.status === 'sending'
+        ? (locale.startsWith('pt') ? 'enviando' : 'sending')
+        : it.meta.status === 'failed'
+        ? (locale.startsWith('pt') ? 'falhou' : 'failed')
+        : (it.meta.status || '')
+      return t('dashboard.activity.broadcastStatus')
+        .replace('{name}', it.meta.name || '')
+        .replace('{status}', statusText)
+        .replace('{count}', String(it.meta.count || 0))
+    case 'automation':
+      if (it.meta.status === 'failed') {
+        return t('dashboard.activity.automationFailed')
+          .replace('{name}', it.meta.name || '')
+          .replace('{who}', who || defaultWho)
+      }
+      return t('dashboard.activity.automationTriggered')
+        .replace('{name}', it.meta.name || '')
+        .replace('{who}', who || defaultWho)
+    default:
+      return it.text
+  }
+}
+
+function relativeTime(iso: string, locale: string, t: (k: string) => string): string {
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return ''
   const diffSec = Math.round((Date.now() - then) / 1000)
-  if (diffSec < 60) return `${Math.max(1, diffSec)}s ago`
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`
-  if (diffSec < 2_592_000) return `${Math.floor(diffSec / 86400)}d ago`
-  return new Date(iso).toLocaleDateString()
+  if (diffSec < 60) {
+    return t('dashboard.time.secondsAgo').replace('{count}', String(Math.max(1, diffSec)))
+  }
+  if (diffSec < 3600) {
+    return t('dashboard.time.minutesAgo').replace('{count}', String(Math.floor(diffSec / 60)))
+  }
+  if (diffSec < 86400) {
+    return t('dashboard.time.hoursAgo').replace('{count}', String(Math.floor(diffSec / 3600)))
+  }
+  if (diffSec < 2_592_000) {
+    return t('dashboard.time.daysAgo').replace('{count}', String(Math.floor(diffSec / 86400)))
+  }
+  return new Date(iso).toLocaleDateString(locale)
 }

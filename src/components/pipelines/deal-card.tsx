@@ -2,6 +2,7 @@
 
 import type { Deal, PipelineStage } from "@/types";
 import { Calendar, Check, X } from "lucide-react";
+import { useTranslation } from "@/hooks/use-translation";
 
 interface DealCardProps {
   deal: Deal;
@@ -10,17 +11,20 @@ interface DealCardProps {
   isOverlay?: boolean;
 }
 
-function formatCurrency(value: number, currency?: string) {
-  return new Intl.NumberFormat("en-US", {
+function formatCurrency(value: number, locale: string, currency?: string) {
+  const isPt = locale.startsWith("pt");
+  const targetLocale = isPt ? "pt-BR" : locale;
+  const targetCurrency = currency || (isPt ? "BRL" : "USD");
+  return new Intl.NumberFormat(targetLocale, {
     style: "currency",
-    currency: currency || "USD",
+    currency: targetCurrency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", {
+function formatDate(dateStr: string, locale: string) {
+  return new Date(dateStr).toLocaleDateString(locale, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -34,7 +38,8 @@ function initials(name?: string, fallback?: string) {
 }
 
 export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
-  const contactLabel = deal.contact?.name || deal.contact?.phone || "No contact";
+  const { locale, t } = useTranslation();
+  const contactLabel = deal.contact?.name || deal.contact?.phone || t("pipelines.noContact");
   const assigneeLabel = deal.assignee?.full_name || null;
 
   return (
@@ -67,13 +72,13 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         {deal.status === "won" && (
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
             <Check className="h-3 w-3" />
-            Won
+            {t("pipelines.statusWon")}
           </span>
         )}
         {deal.status === "lost" && (
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-400">
             <X className="h-3 w-3" />
-            Lost
+            {t("pipelines.statusLost")}
           </span>
         )}
       </div>
@@ -88,12 +93,12 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
 
       <div className="mt-2 flex items-center justify-between">
         <span className="text-sm font-bold text-primary">
-          {formatCurrency(deal.value, deal.currency)}
+          {formatCurrency(deal.value, locale, deal.currency)}
         </span>
         {deal.expected_close_date && (
           <span className="flex items-center gap-1 text-[11px] text-slate-500">
             <Calendar className="h-3 w-3" />
-            {formatDate(deal.expected_close_date)}
+            {formatDate(deal.expected_close_date, locale)}
           </span>
         )}
       </div>

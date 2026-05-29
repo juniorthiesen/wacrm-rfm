@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
+import { useTranslation } from "@/hooks/use-translation";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -18,6 +19,7 @@ import {
   LogOut,
   User,
   X,
+  BarChart2,
 } from "lucide-react";
 import {
   Avatar,
@@ -51,11 +53,24 @@ const navItems: NavItem[] = [
   { href: "/broadcasts", label: "Broadcasts", icon: Radio },
   { href: "/automations", label: "Automations", icon: Zap },
   { href: "/flows", label: "Flows", icon: Workflow, beta: true },
+  { href: "/mensurar", label: "Mensurar", icon: BarChart2 },
 ];
 
 const bottomNavItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
+
+const labelKeyMap: Record<string, string> = {
+  "Dashboard": "nav.dashboard",
+  "Inbox": "nav.inbox",
+  "Contacts": "nav.contacts",
+  "Pipelines": "nav.pipelines",
+  "Broadcasts": "nav.broadcasts",
+  "Automations": "nav.automations",
+  "Flows": "nav.flows",
+  "Mensurar": "nav.mensurar",
+  "Settings": "nav.settings",
+};
 
 interface SidebarProps {
   /** Controlled on mobile by the Header's hamburger button. Ignored on lg+. */
@@ -67,6 +82,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
   const totalUnread = useTotalUnread();
+  const { t } = useTranslation();
 
   // Close the drawer when route changes — users opened it to navigate,
   // so once they pick a destination the drawer should get out of the way.
@@ -128,7 +144,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               <MessageSquare className="h-4 w-4" />
             </div>
             <span className="text-sm font-semibold text-white">
-              CRM Template for WhatsApp
+              {t("nav.logoText")}
             </span>
           </Link>
           <button
@@ -165,7 +181,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     )}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span className="flex-1">{item.label}</span>
+                    <span className="flex-1">{t(labelKeyMap[item.label] || item.label)}</span>
                     {item.beta && (
                       <span
                         aria-label="Beta feature"
@@ -206,7 +222,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     )}
                   >
                     <item.icon className="h-4 w-4" />
-                    {item.label}
+                    {t(labelKeyMap[item.label] || item.label)}
                   </Link>
                 </li>
               );
@@ -256,7 +272,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 }
               >
                 <User className="size-4" />
-                Profile
+                {t("nav.profile")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 render={
@@ -268,7 +284,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 }
               >
                 <Settings className="size-4" />
-                Settings
+                {t("nav.settings")}
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-slate-800" />
               <DropdownMenuItem
@@ -276,7 +292,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 className="text-slate-200 focus:bg-slate-800 focus:text-white"
               >
                 <LogOut className="size-4" />
-                Sign out
+                {t("nav.signOut")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

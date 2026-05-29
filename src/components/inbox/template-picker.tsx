@@ -6,6 +6,7 @@ import type { MessageTemplate } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTranslation } from "@/hooks/use-translation";
 import {
   Dialog,
   DialogContent,
@@ -53,6 +54,7 @@ export function TemplatePicker({
   onOpenChange,
   onSelect,
 }: TemplatePickerProps) {
+  const { t } = useTranslation();
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<MessageTemplate | null>(null);
@@ -138,12 +140,12 @@ export function TemplatePicker({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
             <LayoutTemplate className="h-4 w-4 text-primary" />
-            {selected ? selected.name : "Send template"}
+            {selected ? selected.name : t("inbox.templatePickerTitle")}
           </DialogTitle>
           <DialogDescription className="text-slate-400">
             {selected
-              ? "Fill in the placeholders to render this template. Meta requires every variable to be set."
-              : "Pick an approved WhatsApp template to send to this contact."}
+              ? t("inbox.templatePickerFillVars")
+              : t("inbox.templatePickerDesc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -155,10 +157,9 @@ export function TemplatePicker({
               </div>
             ) : templates.length === 0 ? (
               <div className="rounded-md border border-slate-800 bg-slate-950/50 p-6 text-center">
-                <p className="text-sm text-slate-300">No approved templates</p>
+                <p className="text-sm text-slate-300">{t("inbox.noApprovedTemplates")}</p>
                 <p className="mt-1 text-xs text-slate-500">
-                  Approve a template in Meta WhatsApp Manager, then sync it
-                  from Settings → Templates.
+                  {t("inbox.noApprovedTemplatesDesc")}
                 </p>
               </div>
             ) : (
@@ -197,7 +198,7 @@ export function TemplatePicker({
         ) : (
           <div className="space-y-3">
             <div className="rounded-md border border-slate-800 bg-slate-950/50 p-3">
-              <p className="mb-1 text-xs text-slate-400">Preview</p>
+              <p className="mb-1 text-xs text-slate-400">{t("inbox.previewLabel")}</p>
               <p className="whitespace-pre-wrap text-sm text-slate-200">
                 {renderBodyPreview(selected.body_text, params)}
               </p>
@@ -209,7 +210,7 @@ export function TemplatePicker({
             </div>
             {variables.map((v, i) => (
               <div key={v} className="space-y-1">
-                <Label className="text-xs text-slate-300">{`Variable {{${v}}}`}</Label>
+                <Label className="text-xs text-slate-300">{t("inbox.variableLabel").replace("{{index}}", String(v))}</Label>
                 <Input
                   value={params[i] ?? ""}
                   onChange={(e) => {
@@ -217,7 +218,7 @@ export function TemplatePicker({
                     next[i] = e.target.value;
                     setParams(next);
                   }}
-                  placeholder={`Value for {{${v}}}`}
+                  placeholder={t("inbox.variableValuePlaceholder").replace("{{index}}", String(v))}
                   className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500"
                 />
               </div>
@@ -237,14 +238,14 @@ export function TemplatePicker({
                 className="border-slate-700 text-slate-300 hover:bg-slate-800"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Back
+                {t("common.back")}
               </Button>
               <Button
                 disabled={!canConfirm}
                 onClick={confirm}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                Send template
+                {t("inbox.templatePickerTitle")}
               </Button>
             </>
           ) : (
@@ -253,7 +254,7 @@ export function TemplatePicker({
               onClick={() => handleOpenChange(false)}
               className="border-slate-700 text-slate-300 hover:bg-slate-800"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
           )}
         </DialogFooter>

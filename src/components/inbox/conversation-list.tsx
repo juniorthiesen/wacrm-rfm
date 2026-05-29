@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus } from "@/types";
 import { Search, ChevronDown } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { ptBR, enUS } from "date-fns/locale";
+import { useTranslation } from "@/hooks/use-translation";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -50,6 +52,8 @@ export function ConversationList({
   onConversationsLoaded,
   resyncToken = 0,
 }: ConversationListProps) {
+  const { locale, t } = useTranslation();
+  const dateLocale = locale === "pt-BR" ? ptBR : enUS;
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ConversationStatus | "all">("all");
   const [loading, setLoading] = useState(true);
@@ -134,14 +138,21 @@ export function ConversationList({
     []
   );
 
+  const getFilterLabel = useCallback((val: ConversationStatus | "all") => {
+    switch (val) {
+      case "all": return t("inbox.all");
+      case "open": return t("inbox.open");
+      case "pending": return t("inbox.pending");
+      case "closed": return t("inbox.closed");
+    }
+  }, [t]);
+
   const handleSelect = useCallback(
     (conv: Conversation) => {
       onSelect(conv);
     },
     [onSelect]
   );
-
-  const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
 
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
@@ -155,14 +166,14 @@ export function ConversationList({
           <Input
             value={search}
             onChange={handleSearchChange}
-            placeholder="Search conversations..."
+            placeholder={t("inbox.searchPlaceholder")}
             className="border-slate-700 bg-slate-800 pl-9 text-sm text-white placeholder-slate-500 focus:border-primary/50"
           />
         </div>
 
         <DropdownMenu>
           <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-slate-400 hover:text-white rounded-md hover:bg-slate-800">
-              {activeFilter?.label ?? "All"}
+              {getFilterLabel(filter)}
               <ChevronDown className="h-3 w-3" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -180,7 +191,7 @@ export function ConversationList({
                     : "text-slate-300"
                 )}
               >
-                {opt.label}
+                {getFilterLabel(opt.value)}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -195,7 +206,7 @@ export function ConversationList({
           </div>
         ) : filtered.length === 0 ? (
           <div className="px-4 py-12 text-center">
-            <p className="text-sm text-slate-500">No conversations found</p>
+            <p className="text-sm text-slate-500">{t("inbox.noConversations")}</p>
           </div>
         ) : (
           <div className="flex flex-col">
@@ -225,6 +236,8 @@ function ConversationItem({
   isActive,
   onSelect,
 }: ConversationItemProps) {
+  const { locale, t } = useTranslation();
+  const dateLocale = locale === "pt-BR" ? ptBR : enUS;
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || "Unknown";
   const initials = displayName.charAt(0).toUpperCase();
@@ -236,6 +249,7 @@ function ConversationItem({
   const timeAgo = conversation.last_message_at
     ? formatDistanceToNow(new Date(conversation.last_message_at), {
         addSuffix: false,
+        locale: dateLocale,
       })
     : "";
 
@@ -270,7 +284,7 @@ function ConversationItem({
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
           <p className="truncate text-xs text-slate-400">
-            {conversation.last_message_text || "No messages yet"}
+            {conversation.last_message_text || t("inbox.noMessages")}
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
             {conversation.unread_count > 0 && (

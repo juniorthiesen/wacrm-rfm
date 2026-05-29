@@ -18,12 +18,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
+import { ptBR, enUS } from "date-fns/locale";
+import { useTranslation } from "@/hooks/use-translation";
 
 interface ContactSidebarProps {
   contact: Contact | null;
 }
 
 export function ContactSidebar({ contact }: ContactSidebarProps) {
+  const { locale, t } = useTranslation();
+  const dateLocale = locale === "pt-BR" ? ptBR : enUS;
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
@@ -114,7 +118,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   if (!contact) {
     return (
       <div className="flex h-full w-70 items-center justify-center border-l border-slate-800 bg-slate-900">
-        <p className="text-sm text-slate-500">Select a conversation</p>
+        <p className="text-sm text-slate-500">{t("inbox.noSelectedChat")}</p>
       </div>
     );
   }
@@ -177,11 +181,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           <div>
             <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-slate-500">
               <TagIcon className="h-3 w-3" />
-              Tags
+              {t("inbox.tags")}
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
               {tags.length === 0 ? (
-                <p className="px-1 text-xs text-slate-600">No tags</p>
+                <p className="px-1 text-xs text-slate-600">{t("inbox.noTags")}</p>
               ) : (
                 tags.map((tag) => (
                   <span
@@ -206,11 +210,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           <div>
             <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-slate-500">
               <DollarSign className="h-3 w-3" />
-              Active Deals
+              {t("inbox.activeDeals")}
             </div>
             <div className="mt-2 space-y-2">
               {deals.length === 0 ? (
-                <p className="px-1 text-xs text-slate-600">No deals</p>
+                <p className="px-1 text-xs text-slate-600">{t("inbox.noDeals")}</p>
               ) : (
                 deals.map((deal) => (
                   <div
@@ -223,7 +227,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
                       <span>
                         {deal.currency ?? "$"}
-                        {deal.value.toLocaleString()}
+                        {deal.value.toLocaleString(locale)}
                       </span>
                       {deal.stage && (
                         <span
@@ -250,14 +254,14 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           <div>
             <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-slate-500">
               <StickyNote className="h-3 w-3" />
-              Notes
+              {t("inbox.notes")}
             </div>
             <div className="mt-2">
               <div className="flex gap-2">
                 <textarea
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Add a note..."
+                  placeholder={t("inbox.addNote")}
                   rows={2}
                   className="flex-1 resize-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-primary/50"
                 />
@@ -281,7 +285,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                       {note.note_text}
                     </p>
                     <p className="mt-1 text-[10px] text-slate-600">
-                      {format(new Date(note.created_at), "MMM d, yyyy HH:mm")}
+                      {format(new Date(note.created_at), locale === "pt-BR" ? "dd/MM/yyyy HH:mm" : "MMM d, yyyy HH:mm", { locale: dateLocale })}
                     </p>
                   </div>
                 ))}

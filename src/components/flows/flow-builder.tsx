@@ -66,6 +66,7 @@ import {
   type ValidationIssue,
 } from "@/lib/flows/validate";
 import type { FlowNodeRow, FlowRow } from "@/lib/flows/types";
+import { useTranslation } from "@/hooks/use-translation";
 
 interface FlowBuilderProps {
   initialFlow: FlowRow;
@@ -110,48 +111,51 @@ interface BuilderState {
 // the user sees a node summary.
 // ============================================================
 
-const NODE_META: Record<
-  NodeType,
-  { label: string; icon: typeof Workflow; color: string }
-> = {
-  start: { label: "Start", icon: PlayCircle, color: "text-emerald-400" },
-  send_message: {
-    label: "Send message",
-    icon: MessageCircle,
-    color: "text-sky-400",
-  },
-  send_buttons: {
-    label: "Send buttons",
-    icon: ListChecks,
-    color: "text-primary",
-  },
-  send_list: {
-    label: "Send list",
-    icon: ListPlus,
-    color: "text-indigo-400",
-  },
-  collect_input: {
-    label: "Collect input",
-    icon: Inbox,
-    color: "text-teal-400",
-  },
-  condition: {
-    label: "If / else",
-    icon: GitFork,
-    color: "text-fuchsia-400",
-  },
-  set_tag: {
-    label: "Tag contact",
-    icon: Tag,
-    color: "text-pink-400",
-  },
-  handoff: {
-    label: "Handoff to agent",
-    icon: UserPlus,
-    color: "text-amber-400",
-  },
-  end: { label: "End", icon: Flag, color: "text-slate-400" },
-};
+function getNodeMeta(type: NodeType, t: (key: string) => string) {
+  const meta: Record<
+    NodeType,
+    { label: string; icon: typeof Workflow; color: string }
+  > = {
+    start: { label: t("flows.nodeMeta.start"), icon: PlayCircle, color: "text-emerald-400" },
+    send_message: {
+      label: t("flows.nodeMeta.send_message"),
+      icon: MessageCircle,
+      color: "text-sky-400",
+    },
+    send_buttons: {
+      label: t("flows.nodeMeta.send_buttons"),
+      icon: ListChecks,
+      color: "text-primary",
+    },
+    send_list: {
+      label: t("flows.nodeMeta.send_list"),
+      icon: ListPlus,
+      color: "text-indigo-400",
+    },
+    collect_input: {
+      label: t("flows.nodeMeta.collect_input"),
+      icon: Inbox,
+      color: "text-teal-400",
+    },
+    condition: {
+      label: t("flows.nodeMeta.condition"),
+      icon: GitFork,
+      color: "text-fuchsia-400",
+    },
+    set_tag: {
+      label: t("flows.nodeMeta.set_tag"),
+      icon: Tag,
+      color: "text-pink-400",
+    },
+    handoff: {
+      label: t("flows.nodeMeta.handoff"),
+      icon: UserPlus,
+      color: "text-amber-400",
+    },
+    end: { label: t("flows.nodeMeta.end"), icon: Flag, color: "text-slate-400" },
+  };
+  return meta[type];
+}
 
 // ============================================================
 // Helpers
@@ -183,7 +187,7 @@ function truncate(s: string, max = 80): string {
   return clean.slice(0, max - 1) + "…";
 }
 
-function summarizeNode(node: BuilderNode): string | null {
+function summarizeNode(node: BuilderNode, t: (key: string) => string): string | null {
   const cfg = node.config;
   switch (node.node_type) {
     case "start":
@@ -218,11 +222,11 @@ function summarizeNode(node: BuilderNode): string | null {
       }, 0);
       if (text.length > 0) {
         return rowCount > 0
-          ? `${truncate(text, 50)} · ${rowCount} option${rowCount === 1 ? "" : "s"}`
+          ? `${truncate(text, 50)} · ${rowCount} ${rowCount === 1 ? t("flows.optionSingle") : t("flows.optionPlural")}`
           : truncate(text);
       }
       return rowCount > 0
-        ? `${rowCount} option${rowCount === 1 ? "" : "s"} across ${sections.length} section${sections.length === 1 ? "" : "s"}`
+        ? `${rowCount} ${rowCount === 1 ? t("flows.optionSingle") : t("flows.optionPlural")} ${t("flows.across")} ${sections.length} ${sections.length === 1 ? t("flows.sectionSingle") : t("flows.sectionPlural")}`
         : null;
     }
     case "collect_input": {
@@ -244,16 +248,16 @@ function summarizeNode(node: BuilderNode): string | null {
             ? "field"
             : "var";
       const subjectStr =
-        subject === "tag" ? `has tag ${truncate(subjectKey, 24)}` : `${subject}.${subjectKey}`;
+        subject === "tag" ? `${t("flows.hasTagShort")} ${truncate(subjectKey, 24)}` : `${subject === "field" ? t("flows.fieldShort") : t("flows.varShort")}.${subjectKey}`;
       const op =
         cfg.operator === "equals"
           ? "=="
           : cfg.operator === "contains"
-            ? "contains"
+            ? t("flows.containsOperator")
             : cfg.operator === "present"
-              ? "exists"
+              ? t("flows.existsOperator")
               : cfg.operator === "absent"
-                ? "missing"
+                ? t("flows.missingOperator")
                 : "";
       const value = typeof cfg.value === "string" ? cfg.value : "";
       const valStr =
@@ -263,12 +267,9 @@ function summarizeNode(node: BuilderNode): string | null {
       return subject === "tag" ? subjectStr : `${subjectStr} ${op}${valStr}`;
     }
     case "set_tag": {
-      const mode = cfg.mode === "remove" ? "Remove" : "Add";
+      const mode = cfg.mode === "remove" ? t("flows.removeTagAction") : t("flows.addTagAction");
       const tagId = typeof cfg.tag_id === "string" ? cfg.tag_id : "";
-      // No tag name available without an async lookup here; show a
-      // short prefix of the UUID so users can disambiguate between
-      // multiple set_tag nodes at a glance.
-      return tagId ? `${mode} tag ${tagId.slice(0, 8)}…` : `${mode} tag (none picked)`;
+      return tagId ? `${mode} ${t("flows.tagLabel")} ${tagId.slice(0, 8)}…` : `${mode} ${t("flows.tagNonePicked")}`;
     }
     case "handoff": {
       const note = typeof cfg.note === "string" ? cfg.note : "";
@@ -331,6 +332,7 @@ function defaultConfigFor(type: NodeType): Record<string, unknown> {
 
 export function FlowBuilder({ initialFlow, initialNodes }: FlowBuilderProps) {
   const router = useRouter();
+  const { t } = useTranslation();
 
   const [state, setState] = useState<BuilderState>(() => ({
     name: initialFlow.name,
@@ -417,23 +419,23 @@ export function FlowBuilder({ initialFlow, initialNodes }: FlowBuilderProps) {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error ?? `Save failed: ${res.status}`);
+        throw new Error(json.error ?? `${t("flows.saveFailed")}: ${res.status}`);
       }
       setDirty(false);
-      toast.success("Saved.");
+      toast.success(t("flows.savedSuccessToast"));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Save failed";
+      const msg = err instanceof Error ? err.message : t("flows.saveFailed");
       toast.error(msg);
     } finally {
       setSaving(false);
     }
-  }, [initialFlow.id, state]);
+  }, [initialFlow.id, state, t]);
 
   // ---- Activate / Pause / Archive ----
   const handleStatus = useCallback(
     async (next: BuilderState["status"]) => {
       if (next === "active" && !canActivate) {
-        toast.error("Fix the issues below before activating.");
+        toast.error(t("flows.fixIssuesBeforeActivating"));
         return;
       }
       setActivating(true);
@@ -451,30 +453,30 @@ export function FlowBuilder({ initialFlow, initialNodes }: FlowBuilderProps) {
         });
         if (!res.ok) {
           const json = await res.json().catch(() => ({}));
-          throw new Error(json.error ?? `Status update failed: ${res.status}`);
+          throw new Error(json.error ?? `${t("flows.statusUpdateFailed")}: ${res.status}`);
         }
         setState((s) => ({ ...s, status: next }));
         toast.success(
           next === "active"
-            ? "Flow activated."
+            ? t("flows.flowActivatedToast")
             : next === "archived"
-              ? "Archived."
-              : "Saved as draft.",
+              ? t("flows.archivedToast")
+              : t("flows.savedAsDraftToast"),
         );
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Status update failed";
+        const msg = err instanceof Error ? err.message : t("flows.statusUpdateFailed");
         toast.error(msg);
       } finally {
         setActivating(false);
       }
     },
-    [canActivate, handleSave, initialFlow.id],
+    [canActivate, handleSave, initialFlow.id, t],
   );
 
   // ---- Delete ----
   const handleDelete = useCallback(async () => {
     const yes = window.confirm(
-      `Delete "${state.name}"? Any active runs end immediately. This can't be undone.`,
+      t("flows.confirmDelete").replace("{name}", state.name)
     );
     if (!yes) return;
     try {
@@ -484,10 +486,10 @@ export function FlowBuilder({ initialFlow, initialNodes }: FlowBuilderProps) {
       if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
       router.push("/flows");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Delete failed";
+      const msg = err instanceof Error ? err.message : t("flows.deleteFailed");
       toast.error(msg);
     }
-  }, [initialFlow.id, router, state.name]);
+  }, [initialFlow.id, router, state.name, t]);
 
   // ---- Node helpers ----
   const updateNode = useCallback(
@@ -514,7 +516,7 @@ export function FlowBuilder({ initialFlow, initialNodes }: FlowBuilderProps) {
 
   const addNode = useCallback(
     (type: NodeType) => {
-      const meta = NODE_META[type];
+      const meta = getNodeMeta(type, t);
       const base = slugify(meta.label, type);
       setStateDirty((s) => {
         const node_key = uniqueNodeKey(base, s.nodes);
@@ -621,16 +623,14 @@ export function FlowBuilder({ initialFlow, initialNodes }: FlowBuilderProps) {
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-white">
-            Nodes ({state.nodes.length})
+            {t("flows.nodesCount").replace("{count}", String(state.nodes.length))}
           </h2>
           <AddNodeButton onAdd={addNode} />
         </div>
 
         {state.nodes.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/50 p-8 text-center text-sm text-slate-400">
-            Add a <strong>Start</strong> node, then a <strong>Send buttons</strong>
-            {" "}node, then a <strong>Handoff</strong> — that&apos;s the welcome-menu
-            shape from the brief.
+            {t("flows.emptyNodesDesc")}
           </div>
         ) : (
           state.nodes.map((node) => (
@@ -698,6 +698,7 @@ function Header({
   onBack: () => void;
   onViewRuns: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -707,7 +708,7 @@ function Header({
           className="inline-flex items-center gap-1 hover:text-slate-300"
         >
           <ArrowLeft className="h-3 w-3" />
-          Flows
+          {t("flows.title")}
         </button>
       </div>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -718,18 +719,18 @@ function Header({
             onChange={(e) =>
               setState((s) => ({ ...s, name: e.target.value }))
             }
-            placeholder="Flow name"
+            placeholder={t("flows.flowNamePlaceholder")}
             className="max-w-md bg-slate-900 text-lg font-semibold"
           />
           <StatusBadge status={state.status} />
           {dirty && (
             <span
               className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-amber-300"
-              title="Unsaved changes — hit Save to persist"
+              title={t("flows.unsavedChanges")}
               aria-live="polite"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-              Edited
+              {t("flows.edited")}
             </span>
           )}
         </div>
@@ -740,7 +741,7 @@ function Header({
             onClick={() => onViewRuns()}
           >
             <History className="h-3.5 w-3.5" />
-            Runs
+            {t("flows.runsButton")}
           </Button>
           <Button
             variant="ghost"
@@ -749,7 +750,7 @@ function Header({
             className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
           >
             <Trash2 className="h-3.5 w-3.5" />
-            Delete
+            {t("flows.deleteButton")}
           </Button>
           {state.status === "active" ? (
             <Button
@@ -763,7 +764,7 @@ function Header({
               ) : (
                 <PauseCircle className="h-3.5 w-3.5" />
               )}
-              Pause
+              {t("flows.pauseButton")}
             </Button>
           ) : (
             <Button
@@ -773,7 +774,7 @@ function Header({
               disabled={activating || !canActivate}
               title={
                 !canActivate
-                  ? "Fix the issues below before activating"
+                  ? t("flows.fixIssuesBeforeActivating")
                   : undefined
               }
             >
@@ -782,7 +783,7 @@ function Header({
               ) : (
                 <PlayCircle className="h-3.5 w-3.5" />
               )}
-              Activate
+              {t("flows.activateButton")}
             </Button>
           )}
           <Button onClick={onSave} disabled={saving} size="sm">
@@ -791,7 +792,7 @@ function Header({
             ) : (
               <Save className="h-3.5 w-3.5" />
             )}
-            Save
+            {t("flows.saveButton")}
           </Button>
         </div>
       </div>
@@ -800,7 +801,7 @@ function Header({
         onChange={(e) =>
           setState((s) => ({ ...s, description: e.target.value }))
         }
-        placeholder="Optional description (internal — customers don't see this)"
+        placeholder={t("flows.optionalDescription")}
         className="bg-slate-900 text-sm"
       />
     </div>
@@ -808,14 +809,20 @@ function Header({
 }
 
 function StatusBadge({ status }: { status: BuilderState["status"] }) {
+  const { t } = useTranslation();
   const cls = {
     draft: "border-slate-700 bg-slate-800 text-slate-300",
     active: "border-emerald-600/40 bg-emerald-500/10 text-emerald-300",
     archived: "border-slate-700 bg-slate-800/50 text-slate-500",
   }[status];
+  const label = {
+    draft: t("flows.statusDraft"),
+    active: t("flows.statusActive"),
+    archived: t("flows.statusArchived"),
+  }[status];
   return (
     <Badge variant="outline" className={cn("shrink-0", cls)}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {label}
     </Badge>
   );
 }
@@ -833,12 +840,13 @@ function TriggerPanel({
   setState: React.Dispatch<React.SetStateAction<BuilderState>>;
   triggerIssues: ValidationIssue[];
 }) {
+  const { t } = useTranslation();
   return (
     <section className="rounded-lg border border-slate-800 bg-slate-900 p-4">
-      <h2 className="mb-3 text-sm font-semibold text-white">Trigger</h2>
+      <h2 className="mb-3 text-sm font-semibold text-white">{t("flows.trigger")}</h2>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs text-slate-400">When…</label>
+          <label className="mb-1 block text-xs text-slate-400">{t("flows.when")}</label>
           <Select
             value={state.trigger_type}
             onValueChange={(v) =>
@@ -855,13 +863,13 @@ function TriggerPanel({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="keyword">
-                A message contains a keyword
+                {t("flows.triggerKeyword")}
               </SelectItem>
               <SelectItem value="first_inbound_message">
-                Customer&apos;s first ever inbound message
+                {t("flows.triggerFirstInbound")}
               </SelectItem>
               <SelectItem value="manual">
-                Manual only (no auto-trigger)
+                {t("flows.triggerManual")}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -869,7 +877,7 @@ function TriggerPanel({
         {state.trigger_type === "keyword" && (
           <div>
             <label className="mb-1 block text-xs text-slate-400">
-              Keywords (comma-separated)
+              {t("flows.keywordsLabel")}
             </label>
             <Input
               value={
@@ -917,18 +925,19 @@ function EntryPicker({
   state: BuilderState;
   setState: React.Dispatch<React.SetStateAction<BuilderState>>;
 }) {
+  const { t } = useTranslation();
   if (state.nodes.length === 0) return null;
   return (
     <section className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 p-3">
       <CornerDownRight className="h-4 w-4 shrink-0 text-primary" />
-      <span className="text-xs text-slate-400">Entry node:</span>
+      <span className="text-xs text-slate-400">{t("flows.entryNode")}</span>
       <NodeKeySelect
         value={state.entry_node_id}
         nodes={state.nodes}
         onChange={(key) =>
           setState((s) => ({ ...s, entry_node_id: key }))
         }
-        placeholder="Pick the first node…"
+        placeholder={t("flows.pickEntryNode")}
         className="flex-1 max-w-xs"
       />
     </section>
@@ -966,9 +975,10 @@ function NodeCard({
   onRemove: () => void;
   onSetEntry: () => void;
 }) {
-  const meta = NODE_META[node.node_type];
+  const { t } = useTranslation();
+  const meta = getNodeMeta(node.node_type, t);
   const hasError = issues.some((i) => i.severity === "error");
-  const preview = summarizeNode(node);
+  const preview = summarizeNode(node, t);
   return (
     <div
       ref={cardRef}
@@ -1002,7 +1012,7 @@ function NodeCard({
                 variant="outline"
                 className="border-primary/40 bg-primary/10 text-[10px] text-primary"
               >
-                Entry
+                {t("flows.nodeEntry")}
               </Badge>
             )}
           </div>
@@ -1033,7 +1043,7 @@ function NodeCard({
             <div className="flex items-center gap-2">
               {!isEntry && (
                 <Button variant="ghost" size="sm" onClick={onSetEntry}>
-                  Set as entry
+                  {t("flows.setAsEntry")}
                 </Button>
               )}
             </div>
@@ -1044,7 +1054,7 @@ function NodeCard({
               className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Remove node
+              {t("flows.removeNode")}
             </Button>
           </div>
           {issues.length > 0 && (
@@ -1075,6 +1085,7 @@ function NodeConfigForm({
   onUpdate: (patch: Partial<BuilderNode>) => void;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
 }) {
+  const { t } = useTranslation();
   const cfg = node.config;
   // Internal identifiers (node_key, reply_id columns on buttons/list rows)
   // are auto-generated and the runner is the only consumer. Hide them by
@@ -1092,14 +1103,14 @@ function NodeConfigForm({
           allNodes={allNodes}
           currentKey={node.node_key}
           onChange={(v) => onUpdateConfig({ next_node_key: v })}
-          label="Advances to"
+          label={t("flows.advancesTo")}
         />
       )}
 
       {node.node_type === "send_message" && (
         <>
           <TextRow
-            label="Text sent to the customer"
+            label={t("flows.textSentToCustomer")}
             value={(cfg as { text?: string }).text ?? ""}
             onChange={(v) => onUpdateConfig({ text: v })}
           />
@@ -1108,7 +1119,7 @@ function NodeConfigForm({
             allNodes={allNodes}
             currentKey={node.node_key}
             onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label="Advances to"
+            label={t("flows.advancesTo")}
           />
         </>
       )}
@@ -1136,14 +1147,14 @@ function NodeConfigForm({
       {node.node_type === "collect_input" && (
         <>
           <TextRow
-            label="Prompt sent to the customer"
+            label={t("flows.promptSentToCustomer")}
             value={(cfg as { prompt_text?: string }).prompt_text ?? ""}
             onChange={(v) => onUpdateConfig({ prompt_text: v })}
             rows={2}
           />
           <div>
             <label className="mb-1 block text-xs text-slate-400">
-              Variable key (stored in flow_runs.vars; alphanumeric + underscore)
+              {t("flows.varKeyLabel")}
             </label>
             <Input
               value={(cfg as { var_key?: string }).var_key ?? ""}
@@ -1152,17 +1163,14 @@ function NodeConfigForm({
                   var_key: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
                 })
               }
-              placeholder="e.g. name, email, company"
+              placeholder={t("flows.varKeyPlaceholder")}
               className="bg-slate-800 font-mono text-xs"
             />
             <p className="mt-1 text-[10px] text-slate-500">
-              Interpolate in downstream prompts and handoff notes with{" "}
-              <code className="rounded bg-slate-800 px-1">
-                {"{{vars."}
-                {(cfg as { var_key?: string }).var_key || "name"}
-                {"}}"}
-              </code>
-              .
+              {t("flows.varKeyHelp").replace(
+                "{{vars.name}}",
+                `{{vars.${(cfg as { var_key?: string }).var_key || "name"}}}`
+              )}
             </p>
           </div>
           <NextNodeRow
@@ -1170,7 +1178,7 @@ function NodeConfigForm({
             allNodes={allNodes}
             currentKey={node.node_key}
             onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label="After capturing, advance to"
+            label={t("flows.afterCapturingAdvanceTo")}
           />
         </>
       )}
@@ -1195,7 +1203,7 @@ function NodeConfigForm({
 
       {node.node_type === "handoff" && (
         <TextRow
-          label="Internal note (for the agent picking up)"
+          label={t("flows.internalNote")}
           value={(cfg as { note?: string }).note ?? ""}
           onChange={(v) => onUpdateConfig({ note: v })}
           rows={2}
@@ -1204,8 +1212,7 @@ function NodeConfigForm({
 
       {node.node_type === "end" && (
         <p className="text-xs text-slate-500">
-          Terminal node. When the runner reaches this node the run is marked
-          complete. No config needed.
+          {t("flows.terminalNodeDesc")}
         </p>
       )}
 
@@ -1220,13 +1227,13 @@ function NodeConfigForm({
           ) : (
             <ChevronDown className="h-3 w-3" />
           )}
-          {showAdvanced ? "Hide" : "Show"} advanced
+          {showAdvanced ? t("flows.hideAdvanced") : t("flows.showAdvanced")}
         </button>
         {showAdvanced && (
           <div className="mt-3 flex flex-col gap-3">
             <div>
               <label className="mb-1 block text-xs text-slate-400">
-                Node key (internal identifier — keep stable for analytics)
+                {t("flows.nodeKeyLabel")}
               </label>
               <Input
                 value={node.node_key}
@@ -1238,9 +1245,7 @@ function NodeConfigForm({
             </div>
             {hasReplyIds && (
               <p className="text-[10px] text-slate-500">
-                Reply IDs for each option are shown inline above. They&apos;re
-                returned by WhatsApp when a customer taps; you usually don&apos;t
-                need to touch them.
+                {t("flows.replyIdsHelp")}
               </p>
             )}
           </div>
@@ -1271,6 +1276,7 @@ function SendButtonsForm({
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   showAdvanced: boolean;
 }) {
+  const { t } = useTranslation();
   const buttons = cfg.buttons ?? [];
   const updateButton = (
     idx: number,
@@ -1297,20 +1303,20 @@ function SendButtonsForm({
   return (
     <>
       <TextRow
-        label="Body text"
+        label={t("flows.bodyText")}
         value={cfg.text ?? ""}
         onChange={(v) => onUpdateConfig({ text: v })}
         rows={3}
       />
       <TextRow
-        label="Footer (optional, 60 chars)"
+        label={t("flows.footerOptional")}
         value={cfg.footer_text ?? ""}
         onChange={(v) => onUpdateConfig({ footer_text: v })}
       />
       <div>
         <div className="mb-2 flex items-center justify-between">
           <label className="text-xs text-slate-400">
-            Buttons (1–3) — each one routes to a different next node
+            {t("flows.buttonsLabel")}
           </label>
         </div>
         <div className="flex flex-col gap-3">
@@ -1339,7 +1345,7 @@ function SendButtonsForm({
               <Input
                 value={b.title}
                 onChange={(e) => updateButton(i, { title: e.target.value })}
-                placeholder="Visible title (≤20 chars)"
+                placeholder={t("flows.visibleTitle")}
                 className="bg-slate-800"
                 maxLength={20}
               />
@@ -1348,7 +1354,7 @@ function SendButtonsForm({
                 nodes={allNodes}
                 excludeKey={currentKey}
                 onChange={(v) => updateButton(i, { next_node_key: v ?? "" })}
-                placeholder="Next node…"
+                placeholder={t("flows.nextNode")}
               />
               <Button
                 variant="ghost"
@@ -1369,7 +1375,7 @@ function SendButtonsForm({
             className="mt-2"
           >
             <Plus className="h-3.5 w-3.5" />
-            Add button
+            {t("flows.addButton")}
           </Button>
         )}
       </div>
@@ -1407,6 +1413,7 @@ function SendListForm({
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   showAdvanced: boolean;
 }) {
+  const { t } = useTranslation();
   const sections = cfg.sections ?? [];
   const totalRows = sections.reduce((sum, s) => sum + s.rows.length, 0);
 
@@ -1484,19 +1491,19 @@ function SendListForm({
   return (
     <>
       <TextRow
-        label="Body text"
+        label={t("flows.bodyText")}
         value={cfg.text ?? ""}
         onChange={(v) => onUpdateConfig({ text: v })}
         rows={3}
       />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <TextRow
-          label="Tap-to-expand button label (≤20 chars)"
+          label={t("flows.buttonLabelPlaceholder")}
           value={cfg.button_label ?? ""}
           onChange={(v) => onUpdateConfig({ button_label: v })}
         />
         <TextRow
-          label="Footer (optional, 60 chars)"
+          label={t("flows.footerOptional")}
           value={cfg.footer_text ?? ""}
           onChange={(v) => onUpdateConfig({ footer_text: v })}
         />
@@ -1504,7 +1511,7 @@ function SendListForm({
 
       <div className="mt-2">
         <label className="mb-2 block text-xs text-slate-400">
-          Rows (1–10 total across all sections)
+          {t("flows.rowsLabel")}
         </label>
         {sections.map((section, sIdx) => (
           <div
@@ -1517,7 +1524,7 @@ function SendListForm({
                 onChange={(e) =>
                   updateSection(sIdx, { title: e.target.value })
                 }
-                placeholder={`Section ${sIdx + 1} title (optional)`}
+                placeholder={t("flows.sectionTitlePlaceholder").replace("{index}", String(sIdx + 1))}
                 className="bg-slate-800 text-xs"
               />
               {sections.length > 1 && (
@@ -1562,7 +1569,7 @@ function SendListForm({
                   onChange={(e) =>
                     updateRow(sIdx, rIdx, { title: e.target.value })
                   }
-                  placeholder="Row title (≤24)"
+                  placeholder={t("flows.rowTitlePlaceholder")}
                   className="bg-slate-800"
                   maxLength={24}
                 />
@@ -1573,7 +1580,7 @@ function SendListForm({
                   onChange={(v) =>
                     updateRow(sIdx, rIdx, { next_node_key: v ?? "" })
                   }
-                  placeholder="Next node…"
+                  placeholder={t("flows.nextNode")}
                 />
                 <Button
                   variant="ghost"
@@ -1593,7 +1600,7 @@ function SendListForm({
                 className="mt-1"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Add row
+                {t("flows.addRow")}
               </Button>
             )}
           </div>
@@ -1608,7 +1615,7 @@ function SendListForm({
             onClick={addSection}
           >
             <Plus className="h-3.5 w-3.5" />
-            Add section
+            {t("flows.addSection")}
           </Button>
         )}
       </div>
@@ -1644,6 +1651,7 @@ function ConditionForm({
   currentKey: string;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
 }) {
+  const { t } = useTranslation();
   const [tags, setTags] = useState<UserTag[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -1671,7 +1679,7 @@ function ConditionForm({
     <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div>
-          <label className="mb-1 block text-xs text-slate-400">If</label>
+          <label className="mb-1 block text-xs text-slate-400">{t("flows.if")}</label>
           <Select
             value={subject}
             onValueChange={(v) =>
@@ -1682,19 +1690,19 @@ function ConditionForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="var">Captured variable</SelectItem>
-              <SelectItem value="tag">Contact has tag</SelectItem>
-              <SelectItem value="contact_field">Contact field</SelectItem>
+              <SelectItem value="var">{t("flows.capturedVariable")}</SelectItem>
+              <SelectItem value="tag">{t("flows.contactHasTag")}</SelectItem>
+              <SelectItem value="contact_field">{t("flows.contactField")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="md:col-span-2">
           <label className="mb-1 block text-xs text-slate-400">
             {subject === "var"
-              ? "var name"
+              ? t("flows.varName")
               : subject === "tag"
-                ? "Tag"
-                : "Field"}
+                ? t("flows.tag")
+                : t("flows.field")}
           </label>
           {subject === "tag" && tags.length > 0 ? (
             <Select
@@ -1702,7 +1710,7 @@ function ConditionForm({
               onValueChange={(v) => onUpdateConfig({ subject_key: v })}
             >
               <SelectTrigger className="bg-slate-800">
-                <SelectValue placeholder="Pick a tag…" />
+                <SelectValue placeholder={t("flows.pickTag")} />
               </SelectTrigger>
               <SelectContent>
                 {tags.map((t) => (
@@ -1718,7 +1726,7 @@ function ConditionForm({
               onValueChange={(v) => onUpdateConfig({ subject_key: v })}
             >
               <SelectTrigger className="bg-slate-800">
-                <SelectValue placeholder="Pick a field…" />
+                <SelectValue placeholder={t("flows.pickField")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="name">name</SelectItem>
@@ -1731,7 +1739,7 @@ function ConditionForm({
             <Input
               value={cfg.subject_key ?? ""}
               onChange={(e) => onUpdateConfig({ subject_key: e.target.value })}
-              placeholder={subject === "var" ? "e.g. email" : "tag UUID"}
+              placeholder={subject === "var" ? "e.g. email" : t("flows.tagLabel") + " UUID"}
               className="bg-slate-800 font-mono text-xs"
             />
           )}
@@ -1745,7 +1753,7 @@ function ConditionForm({
         )}
       >
         <div>
-          <label className="mb-1 block text-xs text-slate-400">Operator</label>
+          <label className="mb-1 block text-xs text-slate-400">{t("flows.operator")}</label>
           <Select
             value={operator}
             onValueChange={(v) =>
@@ -1756,16 +1764,16 @@ function ConditionForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="present">is present</SelectItem>
-              <SelectItem value="absent">is absent</SelectItem>
-              <SelectItem value="equals">equals</SelectItem>
-              <SelectItem value="contains">contains</SelectItem>
+              <SelectItem value="present">{t("flows.isPresent")}</SelectItem>
+              <SelectItem value="absent">{t("flows.isAbsent")}</SelectItem>
+              <SelectItem value="equals">{t("flows.equals")}</SelectItem>
+              <SelectItem value="contains">{t("flows.contains")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         {showValue && (
           <div>
-            <label className="mb-1 block text-xs text-slate-400">Value</label>
+            <label className="mb-1 block text-xs text-slate-400">{t("flows.value")}</label>
             <Input
               value={cfg.value ?? ""}
               onChange={(e) => onUpdateConfig({ value: e.target.value })}
@@ -1781,14 +1789,14 @@ function ConditionForm({
           allNodes={allNodes}
           currentKey={currentKey}
           onChange={(v) => onUpdateConfig({ true_next: v })}
-          label="If true → advance to"
+          label={t("flows.ifTrueAdvance")}
         />
         <NextNodeRow
           value={cfg.false_next ?? ""}
           allNodes={allNodes}
           currentKey={currentKey}
           onChange={(v) => onUpdateConfig({ false_next: v })}
-          label="If false → advance to"
+          label={t("flows.ifFalseAdvance")}
         />
       </div>
     </>
@@ -1814,6 +1822,7 @@ function SetTagForm({
   currentKey: string;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
 }) {
+  const { t } = useTranslation();
   const [tags, setTags] = useState<UserTag[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -1836,7 +1845,7 @@ function SetTagForm({
     <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs text-slate-400">Action</label>
+          <label className="mb-1 block text-xs text-slate-400">{t("flows.action")}</label>
           <Select
             value={cfg.mode ?? "add"}
             onValueChange={(v) =>
@@ -1847,20 +1856,20 @@ function SetTagForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="add">Add tag</SelectItem>
-              <SelectItem value="remove">Remove tag</SelectItem>
+              <SelectItem value="add">{t("flows.addTag")}</SelectItem>
+              <SelectItem value="remove">{t("flows.removeTag")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-slate-400">Tag</label>
+          <label className="mb-1 block text-xs text-slate-400">{t("flows.tag")}</label>
           {tags.length > 0 ? (
             <Select
               value={cfg.tag_id ?? ""}
               onValueChange={(v) => onUpdateConfig({ tag_id: v })}
             >
               <SelectTrigger className="bg-slate-800">
-                <SelectValue placeholder="Pick a tag…" />
+                <SelectValue placeholder={t("flows.pickTag")} />
               </SelectTrigger>
               <SelectContent>
                 {tags.map((t) => (
@@ -1874,7 +1883,7 @@ function SetTagForm({
             <Input
               value={cfg.tag_id ?? ""}
               onChange={(e) => onUpdateConfig({ tag_id: e.target.value })}
-              placeholder="Tag UUID"
+              placeholder={t("flows.tagLabel") + " UUID"}
               className="bg-slate-800 font-mono text-xs"
             />
           )}
@@ -1885,7 +1894,7 @@ function SetTagForm({
         allNodes={allNodes}
         currentKey={currentKey}
         onChange={(v) => onUpdateConfig({ next_node_key: v })}
-        label="Then advance to"
+        label={t("flows.thenAdvanceTo")}
       />
     </>
   );
@@ -1938,6 +1947,7 @@ function NextNodeRow({
   onChange: (v: string) => void;
   label: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div>
       <label className="mb-1 block text-xs text-slate-400">{label}</label>
@@ -1946,7 +1956,7 @@ function NextNodeRow({
         nodes={allNodes}
         excludeKey={currentKey}
         onChange={(v) => onChange(v ?? "")}
-        placeholder="Pick a next node…"
+        placeholder={t("flows.pickNextNodePlaceholder")}
       />
     </div>
   );
@@ -1967,6 +1977,7 @@ function NodeKeySelect({
   placeholder?: string;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const options = nodes.filter((n) => n.node_key !== excludeKey);
   return (
     <Select
@@ -1977,14 +1988,14 @@ function NodeKeySelect({
         <SelectValue placeholder={placeholder ?? "—"} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="__none__">— None —</SelectItem>
+        <SelectItem value="__none__">{t("flows.noneOptionSelect")}</SelectItem>
         {options.map((n) => {
-          const Icon = NODE_META[n.node_type].icon;
+          const Icon = getNodeMeta(n.node_type, t).icon;
           return (
             <SelectItem key={n.node_key} value={n.node_key}>
               <span className="inline-flex items-center gap-1.5">
                 <Icon
-                  className={cn("h-3 w-3", NODE_META[n.node_type].color)}
+                  className={cn("h-3 w-3", getNodeMeta(n.node_type, t).color)}
                 />
                 {n.node_key}
               </span>
@@ -2001,6 +2012,7 @@ function NodeKeySelect({
 // ============================================================
 
 function AddNodeButton({ onAdd }: { onAdd: (type: NodeType) => void }) {
+  const { t } = useTranslation();
   const types: NodeType[] = [
     "start",
     "send_buttons",
@@ -2016,16 +2028,16 @@ function AddNodeButton({ onAdd }: { onAdd: (type: NodeType) => void }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:bg-slate-800"
-        aria-label="Add node"
+        aria-label={t("flows.addNode")}
       >
         <Plus className="h-3.5 w-3.5" />
-        Add node
+        {t("flows.addNode")}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="border-slate-700 bg-slate-900">
-        {types.map((t) => {
-          const meta = NODE_META[t];
+        {types.map((tType) => {
+          const meta = getNodeMeta(tType, t);
           return (
-            <DropdownMenuItem key={t} onClick={() => onAdd(t)}>
+            <DropdownMenuItem key={tType} onClick={() => onAdd(tType)}>
               <meta.icon className={cn("h-3.5 w-3.5", meta.color)} />
               {meta.label}
             </DropdownMenuItem>
@@ -2047,6 +2059,7 @@ function ValidationPanel({
   issues: ValidationIssue[];
   onJump: (key: string) => void;
 }) {
+  const { t } = useTranslation();
   if (issues.length === 0) {
     // Slate-950 base + emerald accents so the panel stays readable when
     // sticky-positioned over scrolled-behind node cards (a translucent
@@ -2054,7 +2067,7 @@ function ValidationPanel({
     return (
       <div className="flex items-center gap-2 rounded-lg border border-emerald-600/50 bg-slate-950 p-3 text-sm font-medium text-emerald-300">
         <CircleCheck className="h-4 w-4 shrink-0" />
-        No issues. Ready to activate.
+        {t("flows.noIssuesReady")}
       </div>
     );
   }
@@ -2073,8 +2086,9 @@ function ValidationPanel({
         ) : (
           <CircleAlert className="h-4 w-4 text-amber-400" />
         )}
-        {errors.length} error{errors.length === 1 ? "" : "s"},{" "}
-        {warnings.length} warning{warnings.length === 1 ? "" : "s"}
+        {errors.length === 1 ? t("flows.errorsCount").replace("{count}", "1") : t("flows.errorsCountPlural").replace("{count}", String(errors.length))}
+        {", "}
+        {warnings.length === 1 ? t("flows.warningsCount").replace("{count}", "1") : t("flows.warningsCountPlural").replace("{count}", String(warnings.length))}
       </div>
       <div className="flex flex-col gap-1">
         {issues.map((i, ix) => (
@@ -2092,6 +2106,7 @@ function IssueLine({
   issue: ValidationIssue;
   onJump?: (key: string) => void;
 }) {
+  const { t } = useTranslation();
   const tone =
     issue.severity === "error" ? "text-red-300" : "text-amber-300";
   const iconTone =
@@ -2101,7 +2116,7 @@ function IssueLine({
       <CircleAlert className={cn("mt-0.5 h-3 w-3 shrink-0", iconTone)} />
       <span className="min-w-0 flex-1">
         {issue.node_key && (
-          <code className="mr-1 rounded bg-slate-800 px-1 py-0.5 text-[10px] text-slate-400">
+          <code className="mr-1 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">
             {issue.node_key}
           </code>
         )}
@@ -2121,7 +2136,7 @@ function IssueLine({
           "flex w-full items-start gap-2 rounded-md px-2 py-1 text-left text-xs transition-colors hover:bg-slate-800/60",
           tone,
         )}
-        aria-label={`Jump to node ${issue.node_key}`}
+        aria-label={t("flows.jumpToNode").replace("{key}", issue.node_key!)}
       >
         {body}
       </button>

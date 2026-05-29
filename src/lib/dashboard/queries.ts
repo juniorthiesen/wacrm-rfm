@@ -314,23 +314,26 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
   }>) {
     const conv = Array.isArray(m.conversations) ? m.conversations[0] : m.conversations
     const contact = Array.isArray(conv?.contacts) ? conv?.contacts[0] : conv?.contacts
-    const who = contact?.name || contact?.phone || 'Unknown'
+    const who = contact?.name || contact?.phone || ''
     items.push({
       id: `msg-${m.id}`,
       kind: 'message',
-      text: `New message from ${who}`,
+      text: `New message from ${who || 'Unknown'}`,
       at: m.created_at,
       href: `/inbox?c=${m.conversation_id}`,
+      meta: { who: who || undefined }
     })
   }
 
   for (const c of (contacts.data ?? []) as Array<{ id: string; name: string | null; phone: string; created_at: string }>) {
+    const who = c.name || c.phone
     items.push({
       id: `contact-${c.id}`,
       kind: 'contact',
-      text: `New contact: ${c.name || c.phone}`,
+      text: `New contact: ${who}`,
       at: c.created_at,
       href: '/contacts',
+      meta: { who }
     })
   }
 
@@ -349,6 +352,7 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
         : `Deal "${d.title}" updated`,
       at: d.updated_at,
       href: '/pipelines',
+      meta: { title: d.title, stage: stage?.name || undefined }
     })
   }
 
@@ -369,6 +373,7 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
       text: `Broadcast "${b.name}" ${label}`,
       at: b.created_at,
       href: '/broadcasts',
+      meta: { name: b.name, status: b.status, count: b.total_recipients }
     })
   }
 
@@ -382,13 +387,14 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
   }>) {
     const automation = Array.isArray(l.automation) ? l.automation[0] : l.automation
     const contact = Array.isArray(l.contact) ? l.contact[0] : l.contact
-    const who = contact?.name || contact?.phone || 'a contact'
-    const autoName = automation?.name || 'Automation'
+    const who = contact?.name || contact?.phone || ''
+    const autoName = automation?.name || ''
     items.push({
       id: `auto-${l.id}`,
       kind: 'automation',
-      text: `Automation "${autoName}" ${l.status === 'failed' ? 'failed for' : 'triggered for'} ${who}`,
+      text: `Automation "${autoName}" ${l.status === 'failed' ? 'failed for' : 'triggered for'} ${who || 'a contact'}`,
       at: l.created_at,
+      meta: { name: autoName, who: who || undefined, status: l.status }
     })
   }
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
+import { useTranslation } from '@/hooks/use-translation';
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,7 @@ export function ContactForm({
   contactTags = [],
   onSaved,
 }: ContactFormProps) {
+  const { t } = useTranslation();
   const supabase = createClient();
   const isEdit = !!contact;
 
@@ -79,7 +81,7 @@ export function ContactForm({
     e.preventDefault();
 
     if (!phone.trim()) {
-      toast.error('Phone number is required');
+      toast.error(t('contacts.phoneRequired'));
       return;
     }
 
@@ -141,11 +143,11 @@ export function ContactForm({
         }
       }
 
-      toast.success(isEdit ? 'Contact updated' : 'Contact created');
+      toast.success(isEdit ? t('contacts.contactUpdated') : t('contacts.contactCreated'));
       onOpenChange(false);
       onSaved();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to save contact';
+      const message = err instanceof Error ? err.message : t('contacts.failedToSave');
       toast.error(message);
     } finally {
       setSaving(false);
@@ -157,19 +159,19 @@ export function ContactForm({
       <DialogContent className="bg-slate-900 border-slate-700 text-slate-200 sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-white">
-            {isEdit ? 'Edit Contact' : 'Add Contact'}
+            {isEdit ? t('contacts.editContactTitle') : t('contacts.newContactTitle')}
           </DialogTitle>
           <DialogDescription className="text-slate-400">
             {isEdit
-              ? 'Update the contact details below.'
-              : 'Fill in the details to create a new contact.'}
+              ? t('contacts.updateContactDetails')
+              : t('contacts.fillDetails')}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="cf-name" className="text-slate-300">
-              Name
+              {t('contacts.nameCol')}
             </Label>
             <Input
               id="cf-name"
@@ -182,7 +184,7 @@ export function ContactForm({
 
           <div className="space-y-2">
             <Label htmlFor="cf-phone" className="text-slate-300">
-              Phone <span className="text-red-400">*</span>
+              {t('contacts.phoneCol')} <span className="text-red-400">*</span>
             </Label>
             <Input
               id="cf-phone"
@@ -192,13 +194,13 @@ export function ContactForm({
               className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
             />
             <p className="text-xs text-slate-500">
-              Include country code, e.g. +1 for US
+              {t('contacts.phoneHelp')}
             </p>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="cf-email" className="text-slate-300">
-              Email
+              {t('contacts.emailCol')}
             </Label>
             <Input
               id="cf-email"
@@ -212,7 +214,7 @@ export function ContactForm({
 
           <div className="space-y-2">
             <Label htmlFor="cf-company" className="text-slate-300">
-              Company
+              {t('contacts.companyCol')}
             </Label>
             <Input
               id="cf-company"
@@ -224,15 +226,15 @@ export function ContactForm({
           </div>
 
           <div className="space-y-2">
-            <Label className="text-slate-300">Tags</Label>
+            <Label className="text-slate-300">{t('contacts.tagsCol')}</Label>
             {loadingTags ? (
               <div className="flex items-center gap-2 text-slate-500 text-sm">
                 <Loader2 className="size-3 animate-spin" />
-                Loading tags...
+                {t('contacts.loadingTags')}
               </div>
             ) : tags.length === 0 ? (
               <p className="text-xs text-slate-500">
-                No tags available. Create tags in Settings.
+                {t('contacts.noTagsAvailable')}
               </p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
@@ -269,7 +271,7 @@ export function ContactForm({
               onClick={() => onOpenChange(false)}
               className="border-slate-700 text-slate-300 hover:bg-slate-800"
             >
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               type="submit"
@@ -277,7 +279,7 @@ export function ContactForm({
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {saving && <Loader2 className="size-4 animate-spin" />}
-              {isEdit ? 'Update' : 'Create'}
+              {isEdit ? t('common.save') : t('common.create')}
             </Button>
           </DialogFooter>
         </form>

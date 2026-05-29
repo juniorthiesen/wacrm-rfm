@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useTranslation } from "@/hooks/use-translation";
 import type { Pipeline, PipelineStage, Deal } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
@@ -38,6 +39,7 @@ const SPEC_DEFAULT_STAGES = [
 
 export default function PipelinesPage() {
   const supabase = createClient();
+  const { t } = useTranslation();
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
@@ -304,7 +306,7 @@ export default function PipelinesPage() {
             >
               <GitBranch className="h-4 w-4 text-primary" />
               <span className="font-semibold">
-                {selectedPipeline?.name ?? "Select Pipeline"}
+                {selectedPipeline?.name ?? t("pipelines.pipelineName")}
               </span>
               <ChevronDown className="h-4 w-4 text-slate-400" />
             </DropdownMenuTrigger>
@@ -314,7 +316,7 @@ export default function PipelinesPage() {
             >
               {pipelines.length === 0 && (
                 <DropdownMenuItem disabled className="text-slate-500">
-                  No pipelines yet
+                  {t("pipelines.noDeals")}
                 </DropdownMenuItem>
               )}
               {pipelines.map((p) => (
@@ -338,7 +340,7 @@ export default function PipelinesPage() {
                   className="text-slate-300"
                 >
                   <Settings className="mr-2 h-3.5 w-3.5" />
-                  Manage Pipelines
+                  {t("settings.title")}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -352,7 +354,7 @@ export default function PipelinesPage() {
             className="border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
           >
             <Plus className="mr-1 h-4 w-4" />
-            Add Pipeline
+            {t("common.add")}
           </Button>
           <Button
             onClick={() => handleAddDeal()}
@@ -360,7 +362,7 @@ export default function PipelinesPage() {
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="mr-1 h-4 w-4" />
-            Add Deal
+            {t("pipelines.addDeal")}
           </Button>
         </div>
       </div>
@@ -370,17 +372,17 @@ export default function PipelinesPage() {
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 py-20">
           <GitBranch className="h-12 w-12 text-slate-600" />
           <h3 className="mt-4 text-lg font-medium text-white">
-            No pipelines yet
+            {t("pipelines.noDeals")}
           </h3>
           <p className="mt-2 text-sm text-slate-400">
-            Create a pipeline to start tracking deals
+            {t("pipelines.subtitle")}
           </p>
           <Button
             onClick={() => setNewPipelineOpen(true)}
             className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="mr-1 h-4 w-4" />
-            Create Pipeline
+            {t("common.create")}
           </Button>
         </div>
       ) : (
@@ -400,10 +402,10 @@ export default function PipelinesPage() {
       <Dialog open={newPipelineOpen} onOpenChange={setNewPipelineOpen}>
         <DialogContent className="sm:max-w-sm bg-slate-900 border-slate-700">
           <DialogHeader>
-            <DialogTitle className="text-white">New Pipeline</DialogTitle>
+            <DialogTitle className="text-white">{t("common.create")}</DialogTitle>
           </DialogHeader>
           <div className="py-2">
-            <Label className="text-slate-300">Pipeline Name</Label>
+            <Label className="text-slate-300">{t("pipelines.pipelineName")}</Label>
             <Input
               value={newPipelineName}
               onChange={(e) => setNewPipelineName(e.target.value)}
@@ -423,14 +425,14 @@ export default function PipelinesPage() {
               onClick={() => setNewPipelineOpen(false)}
               className="border-slate-700 text-slate-300 hover:bg-slate-800"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={handleCreatePipeline}
               disabled={creating || !newPipelineName.trim()}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
-              {creating ? "Creating..." : "Create Pipeline"}
+              {creating ? t("common.saving") : t("common.save")}
             </Button>
           </DialogFooter>
         </DialogContent>

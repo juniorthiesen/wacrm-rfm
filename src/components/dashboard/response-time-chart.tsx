@@ -5,6 +5,7 @@ import { DOW_SHORT_MON_FIRST } from '@/lib/dashboard/date-utils'
 import type { ResponseTimeSummary } from '@/lib/dashboard/types'
 import { EmptyState } from './empty-state'
 import { Skeleton } from './skeleton'
+import { useTranslation } from '@/hooks/use-translation'
 
 interface ResponseTimeChartProps {
   data: ResponseTimeSummary | null
@@ -23,29 +24,29 @@ export function ResponseTimeChart({
   thresholdMinutes = 5,
 }: ResponseTimeChartProps) {
   const hasData = data?.buckets.some((b) => b.avgMinutes != null) ?? false
+  const { locale, t } = useTranslation()
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900">
       <header className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
         <div>
           <h2 className="text-sm font-semibold text-white">
-            Average First Response Time
+            {t('dashboard.avgResponseTime')}
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Minutes to reply to a customer&apos;s first unreplied message, by
-            weekday
+            {t('dashboard.avgResponseTimeSubtitle')}
           </p>
         </div>
         {data && (data.thisWeekAvg != null || data.lastWeekAvg != null) && (
           <div className="text-right text-xs">
             <div className="text-slate-400">
-              This week:{' '}
+              {t('dashboard.thisWeek')}{' '}
               <span className="font-medium text-white tabular-nums">
                 {fmt(data.thisWeekAvg)}
               </span>
             </div>
             <div className="text-slate-500">
-              Last week:{' '}
+              {t('dashboard.lastWeek')}{' '}
               <span className="tabular-nums">{fmt(data.lastWeekAvg)}</span>
             </div>
           </div>
@@ -58,11 +59,11 @@ export function ResponseTimeChart({
         ) : !hasData ? (
           <EmptyState
             icon={Clock}
-            title="No replies recorded yet"
-            hint="This chart fills in as you reply to customer messages."
+            title={t('dashboard.noRepliesRecorded')}
+            hint={t('dashboard.noRepliesHint')}
           />
         ) : (
-          <Bars data={data} thresholdMinutes={thresholdMinutes} />
+          <Bars data={data} thresholdMinutes={thresholdMinutes} locale={locale} t={t} />
         )}
       </div>
     </section>
@@ -72,9 +73,13 @@ export function ResponseTimeChart({
 function Bars({
   data,
   thresholdMinutes,
+  locale,
+  t,
 }: {
   data: ResponseTimeSummary
   thresholdMinutes: number
+  locale: string
+  t: (k: string) => string
 }) {
   const chartW = VB_W - PADDING.left - PADDING.right
   const chartH = VB_H - PADDING.top - PADDING.bottom
@@ -138,7 +143,7 @@ function Bars({
             textAnchor="end"
             className="fill-rose-300 text-[10px]"
           >
-            target {thresholdMinutes}m
+            {t('dashboard.targetTime').replace('{minutes}', String(thresholdMinutes))}
           </text>
         </g>
       )}
@@ -162,9 +167,9 @@ function Bars({
               opacity={muted ? 0.6 : 1}
             >
               <title>
-                {DOW_SHORT_MON_FIRST[i]}:{' '}
-                {b.avgMinutes == null ? 'no samples' : `${b.avgMinutes.toFixed(1)} min avg`}
-                {b.samples > 0 ? ` (${b.samples} sample${b.samples === 1 ? '' : 's'})` : ''}
+                {t('common.daysShort.' + i)}:{' '}
+                {b.avgMinutes == null ? t('dashboard.noSamples') : t('dashboard.minAvg').replace('{minutes}', b.avgMinutes.toFixed(1))}
+                {b.samples > 0 ? ` ${b.samples === 1 ? t('dashboard.oneSampleCount') : t('dashboard.samplesCount').replace('{count}', String(b.samples))}` : ''}
               </title>
             </rect>
             <text
@@ -173,7 +178,7 @@ function Bars({
               textAnchor="middle"
               className="fill-slate-400 text-[11px]"
             >
-              {DOW_SHORT_MON_FIRST[i]}
+              {t('common.daysShort.' + i)}
             </text>
           </g>
         )

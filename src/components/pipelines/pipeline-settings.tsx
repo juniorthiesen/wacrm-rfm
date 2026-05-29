@@ -35,6 +35,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@/hooks/use-translation";
 
 const STAGE_COLORS = [
   "#3b82f6",
@@ -69,6 +70,7 @@ export function PipelineSettings({
   onCreateNewPipeline,
 }: PipelineSettingsProps) {
   const supabase = createClient();
+  const { t } = useTranslation();
 
   const [name, setName] = useState(pipeline.name);
   const [localStages, setLocalStages] = useState<PipelineStage[]>(stages);
@@ -127,14 +129,14 @@ export function PipelineSettings({
     setSaving(false);
 
     if (renameRes.error || stagesRes.error) {
-      toast.error("Failed to save pipeline");
+      toast.error(t("pipelines.failedToSave"));
       return;
     }
 
     onOpenChange(false);
     onPipelinesChanged();
     onStagesChanged();
-    toast.success("Pipeline saved");
+    toast.success(t("pipelines.pipelineSaved"));
   }
 
   async function handleAddStage() {
@@ -151,7 +153,7 @@ export function PipelineSettings({
       .select()
       .single();
     if (error || !data) {
-      toast.error("Failed to add stage");
+      toast.error(t("pipelines.failedToAddStage"));
       return;
     }
     setLocalStages([...localStages, data as PipelineStage]);
@@ -166,7 +168,7 @@ export function PipelineSettings({
       .select("id", { count: "exact", head: true })
       .eq("stage_id", stageId);
     if (count && count > 0) {
-      toast.error("Move or delete deals in this stage first");
+      toast.error(t("pipelines.moveDealsWarning"));
       return;
     }
     const { error } = await supabase
@@ -174,7 +176,7 @@ export function PipelineSettings({
       .delete()
       .eq("id", stageId);
     if (error) {
-      toast.error("Failed to delete stage");
+      toast.error(t("pipelines.failedToDeleteStage"));
       return;
     }
     setLocalStages(localStages.filter((s) => s.id !== stageId));
@@ -189,19 +191,19 @@ export function PipelineSettings({
       .eq("id", pipeline.id);
     setDeleting(false);
     if (error) {
-      toast.error("Failed to delete pipeline");
+      toast.error(t("pipelines.failedToDelete"));
       return;
     }
     onOpenChange(false);
     onPipelinesChanged();
-    toast.success("Pipeline deleted");
+    toast.success(t("pipelines.pipelineDeleted"));
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md bg-slate-900 border-slate-700 max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-white">Manage Pipeline</DialogTitle>
+          <DialogTitle className="text-white">{t("pipelines.managePipeline")}</DialogTitle>
         </DialogHeader>
 
         {showDeleteConfirm ? (
@@ -210,11 +212,10 @@ export function PipelineSettings({
               <AlertTriangle className="h-5 w-5 shrink-0 text-red-400" />
               <div>
                 <p className="text-sm font-medium text-red-400">
-                  Delete Pipeline
+                  {t("pipelines.deletePipeline")}
                 </p>
                 <p className="mt-1 text-xs text-slate-400">
-                  This will archive all deals in this pipeline. This cannot be
-                  undone.
+                  {t("pipelines.deletePipelineWarning")}
                 </p>
               </div>
             </div>
@@ -224,14 +225,14 @@ export function PipelineSettings({
                 onClick={() => setShowDeleteConfirm(false)}
                 className="border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800"
               >
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 onClick={handleDeletePipeline}
                 disabled={deleting}
                 className="bg-red-600 text-white hover:bg-red-700"
               >
-                {deleting ? "Deleting..." : "Delete Pipeline"}
+                {deleting ? t("common.deleting") : t("pipelines.deletePipeline")}
               </Button>
             </div>
           </div>
@@ -239,7 +240,7 @@ export function PipelineSettings({
           <>
             <div className="grid gap-4 py-2">
               <div className="grid gap-2">
-                <Label className="text-slate-300">Pipeline Name</Label>
+                <Label className="text-slate-300">{t("pipelines.pipelineName")}</Label>
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -248,7 +249,7 @@ export function PipelineSettings({
               </div>
 
               <div className="grid gap-2">
-                <Label className="text-slate-300">Stages</Label>
+                <Label className="text-slate-300">{t("pipelines.stagesTitle")}</Label>
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -294,7 +295,7 @@ export function PipelineSettings({
                         borderColor:
                           newStageColor === color ? "white" : "transparent",
                       }}
-                      aria-label={`Pick color ${color}`}
+                      aria-label={`${t("pipelines.changeColor")} ${color}`}
                     />
                   ))}
                 </div>
@@ -302,7 +303,7 @@ export function PipelineSettings({
                   <Input
                     value={newStageName}
                     onChange={(e) => setNewStageName(e.target.value)}
-                    placeholder="New stage name"
+                    placeholder={t("pipelines.newStagePlaceholder")}
                     className="border-slate-700 bg-slate-800 text-sm text-white"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleAddStage();
@@ -316,7 +317,7 @@ export function PipelineSettings({
                     className="shrink-0 border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800"
                   >
                     <Plus className="mr-1 h-3 w-3" />
-                    Add
+                    {t("common.add")}
                   </Button>
                 </div>
               </div>
@@ -327,7 +328,7 @@ export function PipelineSettings({
                 className="w-full border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800"
               >
                 <Plus className="mr-1 h-3 w-3" />
-                Create a new pipeline
+                {t("pipelines.createNewPipeline")}
               </Button>
             </div>
 
@@ -337,21 +338,21 @@ export function PipelineSettings({
                 onClick={() => setShowDeleteConfirm(true)}
                 className="mr-auto bg-red-600 hover:bg-red-700"
               >
-                Delete Pipeline
+                {t("pipelines.deletePipeline")}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => onOpenChange(false)}
                 className="border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800"
               >
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 onClick={handleSave}
                 disabled={saving || !name.trim()}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                {saving ? "Saving..." : "Save Changes"}
+                {saving ? t("common.saving") : t("contacts.saveChanges")}
               </Button>
             </DialogFooter>
           </>
@@ -374,6 +375,7 @@ function SortableStageRow({
   onRemove: () => void;
   colors: string[];
 }) {
+  const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: stage.id });
 
@@ -394,7 +396,7 @@ function SortableStageRow({
         {...attributes}
         {...listeners}
         className="cursor-grab touch-none text-slate-500 hover:text-slate-300 active:cursor-grabbing"
-        aria-label="Drag to reorder"
+        aria-label={t("pipelines.dragToReorder")}
       >
         <GripVertical className="h-4 w-4" />
       </button>
@@ -425,6 +427,7 @@ function ColorSwatch({
   onChange: (v: string) => void;
   colors: string[];
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
@@ -433,7 +436,7 @@ function ColorSwatch({
         onClick={() => setOpen((v) => !v)}
         className="h-4 w-4 rounded-full border border-slate-600"
         style={{ backgroundColor: value }}
-        aria-label="Change color"
+        aria-label={t("pipelines.changeColor")}
       />
       {open && (
         <>

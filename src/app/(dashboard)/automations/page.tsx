@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
+import { useTranslation } from "@/hooks/use-translation"
 import type { Automation } from "@/types"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -37,8 +38,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { AUTOMATION_TEMPLATES, type TemplateSlug } from "@/lib/automations/templates"
-import { triggerMeta, formatRelative } from "@/lib/automations/trigger-meta"
+import { type TemplateSlug } from "@/lib/automations/templates"
+import { triggerMeta } from "@/lib/automations/trigger-meta"
 import { cn } from "@/lib/utils"
 
 const TEMPLATE_ORDER: TemplateSlug[] = [
@@ -57,6 +58,7 @@ const TEMPLATE_ICON: Record<TemplateSlug, typeof Zap> = {
 
 export default function AutomationsPage() {
   const router = useRouter()
+  const { t } = useTranslation()
   const [automations, setAutomations] = useState<Automation[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Automation | null>(null)
@@ -157,9 +159,9 @@ export default function AutomationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Automations</h1>
+          <h1 className="text-2xl font-bold text-white">{t("automations.title")}</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Build workflows that react to WhatsApp® events automatically.
+            {t("automations.subtitle")}
           </p>
         </div>
         <Button
@@ -167,16 +169,15 @@ export default function AutomationsPage() {
           className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" />
-          Create Automation
+          {t("automations.newAutomation")}
         </Button>
       </div>
 
       {showTemplates && (
         <section>
-          <h2 className="mb-3 text-sm font-semibold text-slate-300">Quick-start templates</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-300">{t("automations.quickStartTemplates")}</h2>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {TEMPLATE_ORDER.map((slug) => {
-              const t = AUTOMATION_TEMPLATES[slug]
               const Icon = TEMPLATE_ICON[slug]
               return (
                 <button
@@ -187,8 +188,8 @@ export default function AutomationsPage() {
                   <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15">
                     <Icon className="h-5 w-5" />
                   </div>
-                  <div className="text-sm font-semibold text-white">{t.name}</div>
-                  <p className="mt-1 text-xs text-slate-400">{t.description}</p>
+                  <div className="text-sm font-semibold text-white">{t(`automations.templates.${slug}.name`)}</div>
+                  <p className="mt-1 text-xs text-slate-400">{t(`automations.templates.${slug}.description`)}</p>
                 </button>
               )
             })}
@@ -201,9 +202,9 @@ export default function AutomationsPage() {
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
             <Zap className="h-6 w-6 text-primary" />
           </div>
-          <p className="mt-3 text-sm font-medium text-white">No automations yet</p>
+          <p className="mt-3 text-sm font-medium text-white">{t("common.none")}</p>
           <p className="mt-1 text-xs text-slate-400">
-            Pick a template above or create one from scratch.
+            {t("automations.subtitle")}
           </p>
         </div>
       ) : (
@@ -223,10 +224,10 @@ export default function AutomationsPage() {
       )}
 
       <Dialog open={!!pendingDelete} onOpenChange={(v) => !v && setPendingDelete(null)}>
-        <DialogContent>
+        <DialogContent className="bg-slate-900 border-slate-700">
           <DialogHeader>
-            <DialogTitle>Delete automation</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-white">{t("common.delete")}</DialogTitle>
+            <DialogDescription className="text-slate-400">
               This permanently removes{" "}
               <span className="text-white">{pendingDelete?.name}</span> and its execution
               history. This cannot be undone.
@@ -237,8 +238,9 @@ export default function AutomationsPage() {
               variant="ghost"
               onClick={() => setPendingDelete(null)}
               disabled={deleting}
+              className="text-slate-300 hover:bg-slate-800"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -246,7 +248,7 @@ export default function AutomationsPage() {
               disabled={deleting}
             >
               {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Delete
+              {t("common.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -271,6 +273,8 @@ function AutomationCard({
   onDelete: () => void
 }) {
   const meta = triggerMeta(automation.trigger_type)
+  const { t } = useTranslation()
+
   return (
     <li className="rounded-xl border border-slate-800 bg-slate-900 transition-colors hover:border-slate-700">
       <div className="flex items-center gap-4 p-4">
@@ -310,10 +314,8 @@ function AutomationCard({
               {meta.label}
             </span>
             <span className="tabular-nums">
-              {automation.execution_count} run{automation.execution_count === 1 ? "" : "s"}
+              {automation.execution_count} runs
             </span>
-            <span aria-hidden>·</span>
-            <span>last {formatRelative(automation.last_executed_at)}</span>
           </div>
         </button>
 
@@ -331,23 +333,23 @@ function AutomationCard({
             >
               <MoreVertical className="h-4 w-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onEdit}>
-                <Pencil className="h-4 w-4" />
-                Edit
+            <DropdownMenuContent align="end" className="bg-slate-900 border-slate-700">
+              <DropdownMenuItem onClick={onEdit} className="text-slate-300 focus:bg-slate-800 focus:text-white">
+                <Pencil className="h-4 w-4 mr-2" />
+                {t("common.edit")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onDuplicate}>
-                <Copy className="h-4 w-4" />
+              <DropdownMenuItem onClick={onDuplicate} className="text-slate-300 focus:bg-slate-800 focus:text-white">
+                <Copy className="h-4 w-4 mr-2" />
                 Duplicate
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onLogs}>
-                <FileText className="h-4 w-4" />
-                View Logs
+              <DropdownMenuItem onClick={onLogs} className="text-slate-300 focus:bg-slate-800 focus:text-white">
+                <FileText className="h-4 w-4 mr-2" />
+                Logs
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="bg-slate-800" />
               <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                <Trash2 className="h-4 w-4" />
-                Delete
+                <Trash2 className="h-4 w-4 mr-2" />
+                {t("common.delete")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

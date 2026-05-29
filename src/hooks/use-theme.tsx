@@ -55,7 +55,15 @@ function readInitialTheme(): ThemeId {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeId>(readInitialTheme);
+  const [theme, setThemeState] = useState<ThemeId>(DEFAULT_THEME);
+
+  // Sync preferred theme on mount (client-only) to prevent hydration mismatches
+  useEffect(() => {
+    const initialTheme = readInitialTheme();
+    if (initialTheme !== DEFAULT_THEME) {
+      setThemeState(initialTheme);
+    }
+  }, []);
 
   const setTheme = useCallback((next: ThemeId) => {
     setThemeState(next);
