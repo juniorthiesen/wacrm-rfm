@@ -263,6 +263,7 @@ export type AutomationTriggerType =
   // docs/woocommerce-integration.md.
   | 'order_received'
   | 'order_paid'
+  | 'order_in_separation'
   | 'order_shipped'
   | 'order_cancelled'
   | 'order_refunded'

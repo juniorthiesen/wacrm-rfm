@@ -9,21 +9,30 @@ import type { AutomationTriggerType } from "@/types";
 // Map the WooCommerce order status to our automation trigger type.
 // We only fire on **status transitions** (i.e. status changed from
 // previous value), so users don't get spammed when WC sends repeated
-// upserts for the same order. Statuses outside this map (e.g. "on-hold",
-// custom plugin statuses) intentionally don't fire any trigger.
+// upserts for the same order.
 //
-// WC's standard lifecycle: pending → processing → completed
-//   - pending     → awaiting payment ("Pedido Recebido")
-//   - processing  → payment confirmed ("Pagamento Aprovado")
-//   - completed   → order fulfilled / shipped ("Pedido Enviado")
-//   - cancelled / refunded / failed → side branches
+// Standard WC lifecycle: pending → processing → completed
+// Brazilian e-commerce often customises the slugs:
+//   - "separacao"  — picking / order being prepared (between paid and
+//                    shipped). Common on Loja5 and similar themes.
+//   - "enviado"    — Portuguese for "shipped"; alternative to "completed".
+//   - "on-hold"    — WC standard, used by PIX/boleto gateways while
+//                    waiting for the bank confirmation. Behaviourally
+//                    identical to "pending" for our purposes (the
+//                    customer needs the PIX code now).
+//
+// Statuses NOT in this map intentionally don't fire any trigger.
 function statusToTrigger(status: string): AutomationTriggerType | null {
   switch (status) {
     case "pending":
+    case "on-hold":
       return "order_received";
     case "processing":
       return "order_paid";
+    case "separacao":
+      return "order_in_separation";
     case "completed":
+    case "enviado":
       return "order_shipped";
     case "cancelled":
       return "order_cancelled";
@@ -34,6 +43,88 @@ function statusToTrigger(status: string): AutomationTriggerType | null {
     default:
       return null;
   }
+}
+
+// Common meta_data keys used by Brazilian PIX gateways. Each plugin
+// stores the copy-paste payload under a different key, so we probe
+// them in priority order and return the first non-empty value.
+//
+// Sources observed in the wild:
+//   - pix_copiar_colar              — generic / theme-installed
+//   - _dados_cielo_api_pix_qrcode   — Cielo official plugin
+//   - _pix_copy_and_paste           — Loja5 theme
+//   - woo_pix_code                  — Pix for WooCommerce free plugin
+//   - efi_pix_copy_and_paste        — Efí (formerly Gerencianet)
+const PIX_META_KEYS = [
+  "pix_copiar_colar",
+  "_dados_cielo_api_pix_qrcode",
+  "_pix_copy_and_paste",
+  "woo_pix_code",
+  "efi_pix_copy_and_paste",
+] as const;
+
+// Tracking code keys vary by carrier plugin. Order matters — the more
+// specific keys are checked first so a generic `_tracking_code` won't
+// mask a Correios-specific value.
+const TRACKING_META_KEYS = [
+  "_tracking_code",
+  "tracking_code",
+  "correios_tracking",
+  "_tracking_number",
+  "tracking_number",
+] as const;
+
+interface WooMetaItem {
+  key?: string;
+  value?: unknown;
+}
+
+/**
+ * Walk an array of WooCommerce meta_data entries and return the first
+ * non-empty value whose key matches one of `candidateKeys`. WC meta
+ * values can be strings, numbers, arrays, or serialised objects; we
+ * coerce to string and skip blanks.
+ */
+function findMetaValue(
+  metaData: WooMetaItem[] | undefined,
+  candidateKeys: readonly string[]
+): string | null {
+  if (!Array.isArray(metaData)) return null;
+  const lookup = new Set(candidateKeys);
+  for (const entry of metaData) {
+    if (!entry?.key || !lookup.has(entry.key)) continue;
+    const v = entry.value;
+    if (v == null) continue;
+    const s = typeof v === "string" ? v : String(v);
+    if (s.trim().length > 0) return s;
+  }
+  return null;
+}
+
+interface WooLineItem {
+  name?: string;
+  quantity?: number;
+}
+
+/**
+ * Render the order's items as a multi-line bullet list suitable for
+ * dropping into a template variable. Truncated at 10 items + "...
+ * e mais N item(s)" to keep us under the typical 1024-char variable
+ * limit Meta enforces.
+ */
+function buildItemsList(items: WooLineItem[] | undefined): string {
+  if (!Array.isArray(items) || items.length === 0) return "";
+  const MAX = 10;
+  const visible = items.slice(0, MAX);
+  const lines = visible.map((it) => {
+    const name = (it.name ?? "Item").trim();
+    const qty = it.quantity ?? 1;
+    return `▪️ ${name} (Qtd: ${qty})`;
+  });
+  if (items.length > MAX) {
+    lines.push(`... e mais ${items.length - MAX} item(s)`);
+  }
+  return lines.join("\n");
 }
 
 // Lazy-initialized admin client to bypass RLS policies
@@ -275,16 +366,18 @@ export async function POST(request: Request) {
           contact?.name ||
           "Cliente";
 
-        // Tracking codes can live in several plugin-specific places on
-        // the order — try the common ones, fall back to empty string so
-        // template interpolation never renders 'undefined'.
+        // Tracking, PIX, and items list — each from a different part of
+        // the WC payload. Empty string fallbacks ensure template
+        // interpolation never renders 'undefined' to the customer.
         const trackingCode =
-          payload.shipment_tracking?.[0]?.tracking_number ||
-          payload.meta_data?.find(
-            (m: { key?: string; value?: unknown }) =>
-              m.key === "_tracking_number" || m.key === "tracking_number"
-          )?.value ||
+          (payload.shipment_tracking?.[0]?.tracking_number as string | undefined) ||
+          findMetaValue(payload.meta_data as WooMetaItem[], TRACKING_META_KEYS) ||
           "";
+
+        const pixCode =
+          findMetaValue(payload.meta_data as WooMetaItem[], PIX_META_KEYS) || "";
+
+        const itemsList = buildItemsList(payload.line_items as WooLineItem[]);
 
         try {
           await runAutomationsForTrigger({
@@ -297,7 +390,9 @@ export async function POST(request: Request) {
                 total: totalAmount,
                 currency,
                 status,
-                tracking_code: String(trackingCode),
+                tracking_code: trackingCode,
+                pix_code: pixCode,
+                items_list: itemsList,
                 platform: "woocommerce",
               },
               customer: {

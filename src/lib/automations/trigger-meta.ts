@@ -43,6 +43,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Pagamento Aprovado',
     pillClass: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
   },
+  order_in_separation: {
+    label: 'Pedido em Separação',
+    pillClass: 'border-violet-500/30 bg-violet-500/10 text-violet-300',
+  },
   order_shipped: {
     label: 'Pedido Enviado',
     pillClass: 'border-sky-500/30 bg-sky-500/10 text-sky-300',

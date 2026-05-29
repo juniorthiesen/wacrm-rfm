@@ -127,6 +127,7 @@ function getTriggerOptions(t: (key: string) => string) {
     // integration.md and src/app/api/integrations/woocommerce/webhook.
     { value: "order_received" as AutomationTriggerType, label: t("automations.triggerOptions.order_received"), hint: t("automations.triggerHints.order_received") },
     { value: "order_paid" as AutomationTriggerType, label: t("automations.triggerOptions.order_paid"), hint: t("automations.triggerHints.order_paid") },
+    { value: "order_in_separation" as AutomationTriggerType, label: t("automations.triggerOptions.order_in_separation"), hint: t("automations.triggerHints.order_in_separation") },
     { value: "order_shipped" as AutomationTriggerType, label: t("automations.triggerOptions.order_shipped"), hint: t("automations.triggerHints.order_shipped") },
     { value: "order_cancelled" as AutomationTriggerType, label: t("automations.triggerOptions.order_cancelled"), hint: t("automations.triggerHints.order_cancelled") },
     { value: "order_refunded" as AutomationTriggerType, label: t("automations.triggerOptions.order_refunded"), hint: t("automations.triggerHints.order_refunded") },

@@ -40,9 +40,10 @@ chamar o trigger.
 
 | Trigger WaCRM | Status WooCommerce | Quando |
 | --- | --- | --- |
-| `order_received` | `pending` | Pedido criado, aguardando pagamento |
+| `order_received` | `pending`, `on-hold` | Pedido criado, aguardando pagamento (PIX/boleto) — código PIX vai pro contexto |
 | `order_paid` | `processing` | Pagamento confirmado |
-| `order_shipped` | `completed` | Pedido despachado / concluído |
+| `order_in_separation` | `separacao` | Pedido em preparação (status custom comum em lojas Loja5) |
+| `order_shipped` | `completed`, `enviado` | Pedido despachado |
 | `order_cancelled` | `cancelled` | Pedido cancelado |
 | `order_refunded` | `refunded` | Reembolso emitido |
 | `order_failed` | `failed` | Pagamento falhou |
@@ -144,10 +145,72 @@ ordem, com qualquer placeholder posicional):
 | `{{order.total}}` | `payload.total` parseado como float |
 | `{{order.currency}}` | `payload.currency` (default `BRL`) |
 | `{{order.status}}` | status novo, igual ao trigger |
-| `{{order.tracking_code}}` | `shipment_tracking[0].tracking_number` ou `meta_data._tracking_number` |
+| `{{order.tracking_code}}` | `shipment_tracking[0].tracking_number` ou meta keys `_tracking_code`, `tracking_code`, `correios_tracking`, `_tracking_number`, `tracking_number` |
+| `{{order.pix_code}}` | meta keys (na ordem): `pix_copiar_colar`, `_dados_cielo_api_pix_qrcode`, `_pix_copy_and_paste`, `woo_pix_code`, `efi_pix_copy_and_paste` — cobre Cielo, Loja5, Efí e plugins genéricos |
+| `{{order.items_list}}` | Lista bullet-point de `line_items` (max 10 itens, depois trunca com "... e mais N item(s)") |
 | `{{order.platform}}` | sempre `woocommerce` |
 
 Valor ausente renderiza como string vazia (nunca `undefined`).
+
+## Exemplo: PIX recovery em 2 mensagens
+
+Pra reproduzir o fluxo do antigo UAZAPI (1 mensagem com texto explicativo
++ 1 mensagem só com o código pra facilitar copy/paste no WhatsApp):
+
+1. **Cria 2 templates HSM** no Meta Business Manager (categoria Utility):
+
+   **`pedido_pix_intro`** (variáveis: nome, número do pedido):
+   ```
+   Olá *{{1}}*! 👋
+
+   Recebemos seu pedido *#{{2}}*.
+   Para confirmar, utilize o Pix Copia e Cola abaixo:
+   ```
+
+   **`pedido_pix_codigo`** (variável: código PIX):
+   ```
+   {{1}}
+   ```
+   > A categoria deve ser Utility com `body` simples — Meta aprova
+   > templates de "código" sem header se o uso for transacional.
+
+2. **No painel WaCRM** → Automações → Nova:
+   - **Nome:** "PIX Recovery"
+   - **Trigger:** `Pedido Recebido` (cobre `pending` e `on-hold`)
+   - **Steps:**
+     1. **Enviar Modelo** → `pedido_pix_intro` (pt_BR)
+        - Variável 1: `{{customer.first_name}}`
+        - Variável 2: `{{order.number}}`
+     2. **Aguardar** → 2 segundos
+     3. **Enviar Modelo** → `pedido_pix_codigo` (pt_BR)
+        - Variável 1: `{{order.pix_code}}`
+   - **Active** → ON
+
+3. **Salva**.
+
+Próxima vez que um pedido cair em `pending`/`on-hold` com código PIX
+no meta, o cliente recebe os 2 textos em sequência.
+
+## Exemplo: confirmação de pagamento com lista de itens
+
+Template `pagamento_aprovado` (Utility):
+```
+Pagamento confirmado, *{{1}}*! 🎉
+
+Seu pedido *#{{2}}* foi aprovado.
+
+*Resumo:*
+{{3}}
+
+Assim que entrar em separação, te avisamos!
+```
+
+Automação:
+- Trigger: `Pagamento Aprovado`
+- Step: Enviar Modelo `pagamento_aprovado`
+  - `{{1}}` → `{{customer.first_name}}`
+  - `{{2}}` → `{{order.number}}`
+  - `{{3}}` → `{{order.items_list}}` (renderiza com bullets ▪️)
 
 ## Testes rápidos
 
