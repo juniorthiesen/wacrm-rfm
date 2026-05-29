@@ -588,6 +588,13 @@ export const translations = {
         messagePlaceholder: "Hi! Thanks for reaching out…",
         templateNameLabel: "Template name",
         languageLabel: "Language",
+        templateSelectLabel: "Approved template",
+        templateSelectPlaceholder: "Select an approved template...",
+        templateNoneApproved: "No approved templates yet. Sync them from Settings → Templates.",
+        templateManualLabel: "Or type the name manually",
+        templateVariablesLabel: "Variables",
+        templateNoVariables: "This template has no variables.",
+        templateVariableHelp: "Use {{customer.name}}, {{customer.first_name}}, {{order.number}}, {{order.total}}, {{order.tracking_code}}, {{vars.X}} or {{message.text}} as dynamic placeholders.",
         tagIdLabel: "Tag id",
         modeLabel: "Mode",
         roundRobinOption: "Round-robin",
@@ -626,7 +633,13 @@ export const translations = {
         new_contact_created: "New Contact Created",
         conversation_assigned: "Conversation Assigned",
         tag_added: "Tag Added",
-        time_based: "Time-Based"
+        time_based: "Time-Based",
+        order_received: "Order Received",
+        order_paid: "Order Paid",
+        order_shipped: "Order Shipped",
+        order_cancelled: "Order Cancelled",
+        order_refunded: "Order Refunded",
+        order_failed: "Order Failed"
       },
       triggerHints: {
         new_message_received: "Any incoming message",
@@ -635,7 +648,13 @@ export const translations = {
         new_contact_created: "When a contact is auto-created from an incoming message",
         conversation_assigned: "When assigned to an agent",
         tag_added: "When a tag is added to a contact",
-        time_based: "On a recurring schedule"
+        time_based: "On a recurring schedule",
+        order_received: "Order created in the connected store (pending payment)",
+        order_paid: "Payment confirmed for an order (status: processing)",
+        order_shipped: "Order fulfilled / completed in the store",
+        order_cancelled: "Order cancelled by customer or store admin",
+        order_refunded: "Refund issued for the order",
+        order_failed: "Payment failed for the order"
       },
       stepMeta: {
         send_message: "Send Message",
@@ -787,7 +806,8 @@ export const translations = {
         templates: "Templates",
         tags: "Tags",
         appearance: "Appearance",
-        metaAds: "Meta Ads"
+        metaAds: "Meta Ads",
+        wooCommerce: "WooCommerce"
       },
       profile: {
         title: "Profile Settings",
@@ -1679,6 +1699,13 @@ export const translations = {
         messagePlaceholder: "Olá! Obrigado por entrar em contato…",
         templateNameLabel: "Nome do modelo",
         languageLabel: "Idioma",
+        templateSelectLabel: "Modelo aprovado",
+        templateSelectPlaceholder: "Selecione um modelo aprovado...",
+        templateNoneApproved: "Nenhum modelo aprovado ainda. Sincronize em Configurações → Modelos.",
+        templateManualLabel: "Ou digite o nome manualmente",
+        templateVariablesLabel: "Variáveis",
+        templateNoVariables: "Este modelo não tem variáveis.",
+        templateVariableHelp: "Use {{customer.name}}, {{customer.first_name}}, {{order.number}}, {{order.total}}, {{order.tracking_code}}, {{vars.X}} ou {{message.text}} como placeholders dinâmicos.",
         tagIdLabel: "ID da etiqueta",
         modeLabel: "Modo",
         roundRobinOption: "Distribuição (Round-robin)",
@@ -1717,7 +1744,13 @@ export const translations = {
         new_contact_created: "Novo Contato Criado",
         conversation_assigned: "Conversa Atribuída",
         tag_added: "Etiqueta Adicionada",
-        time_based: "Baseado em Tempo"
+        time_based: "Baseado em Tempo",
+        order_received: "Pedido Recebido",
+        order_paid: "Pagamento Aprovado",
+        order_shipped: "Pedido Enviado",
+        order_cancelled: "Pedido Cancelado",
+        order_refunded: "Pedido Reembolsado",
+        order_failed: "Pedido Falhou"
       },
       triggerHints: {
         new_message_received: "Qualquer mensagem recebida",
@@ -1726,7 +1759,13 @@ export const translations = {
         new_contact_created: "Quando um contato é criado automaticamente a partir de uma mensagem recebida",
         conversation_assigned: "Quando atribuído a um atendente",
         tag_added: "Quando uma etiqueta é adicionada a um contato",
-        time_based: "Em um agendamento recorrente"
+        time_based: "Em um agendamento recorrente",
+        order_received: "Pedido criado na loja conectada (aguardando pagamento)",
+        order_paid: "Pagamento confirmado (status processing)",
+        order_shipped: "Pedido despachado / concluído na loja",
+        order_cancelled: "Pedido cancelado pelo cliente ou admin",
+        order_refunded: "Reembolso emitido para o pedido",
+        order_failed: "Pagamento falhou no pedido"
       },
       stepMeta: {
         send_message: "Enviar Mensagem",
@@ -1878,7 +1917,8 @@ export const translations = {
         templates: "Modelos",
         tags: "Etiquetas",
         appearance: "Aparência",
-        metaAds: "Meta Ads"
+        metaAds: "Meta Ads",
+        wooCommerce: "WooCommerce"
       },
       profile: {
         title: "Configurações de Perfil",

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Settings, MessageSquare, Tag, User, Palette, BarChart2 } from 'lucide-react';
+import { Settings, MessageSquare, Tag, User, Palette, BarChart2, ShoppingCart } from 'lucide-react';
 import { useTranslation } from '@/hooks/use-translation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { WhatsAppConfig } from '@/components/settings/whatsapp-config';
@@ -12,6 +12,7 @@ import { PasswordForm } from '@/components/settings/password-form';
 import { SessionsCard } from '@/components/settings/sessions-card';
 import { AppearancePanel } from '@/components/settings/appearance-panel';
 import { MetaAdsPanel } from '@/components/settings/meta-ads-panel';
+import { WooCommercePanel } from '@/components/settings/woocommerce-panel';
 
 const TAB_VALUES = [
   'profile',
@@ -20,6 +21,7 @@ const TAB_VALUES = [
   'tags',
   'appearance',
   'meta-ads',
+  'woocommerce',
 ] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
@@ -98,6 +100,13 @@ export default function SettingsPage() {
             <BarChart2 className="size-4" />
             {t("settings.tabs.metaAds")}
           </TabsTrigger>
+          <TabsTrigger
+            value="woocommerce"
+            className="data-active:bg-slate-800 data-active:text-primary text-slate-400"
+          >
+            <ShoppingCart className="size-4" />
+            {t("settings.tabs.wooCommerce")}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="space-y-6">
@@ -124,6 +133,10 @@ export default function SettingsPage() {
 
         <TabsContent value="meta-ads">
           <MetaAdsPanel />
+        </TabsContent>
+
+        <TabsContent value="woocommerce">
+          <WooCommercePanel />
         </TabsContent>
       </Tabs>
     </div>

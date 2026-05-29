@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { createClient } from "@/lib/supabase/client"
 import {
   ArrowLeft,
   ChevronDown,
@@ -121,6 +122,15 @@ function getTriggerOptions(t: (key: string) => string) {
     { value: "conversation_assigned" as AutomationTriggerType, label: t("automations.triggerOptions.conversation_assigned"), hint: t("automations.triggerHints.conversation_assigned") },
     { value: "tag_added" as AutomationTriggerType, label: t("automations.triggerOptions.tag_added"), hint: t("automations.triggerHints.tag_added") },
     { value: "time_based" as AutomationTriggerType, label: t("automations.triggerOptions.time_based"), hint: t("automations.triggerHints.time_based") },
+    // E-commerce order lifecycle triggers — fired by the WooCommerce
+    // webhook on a real status transition. See docs/woocommerce-
+    // integration.md and src/app/api/integrations/woocommerce/webhook.
+    { value: "order_received" as AutomationTriggerType, label: t("automations.triggerOptions.order_received"), hint: t("automations.triggerHints.order_received") },
+    { value: "order_paid" as AutomationTriggerType, label: t("automations.triggerOptions.order_paid"), hint: t("automations.triggerHints.order_paid") },
+    { value: "order_shipped" as AutomationTriggerType, label: t("automations.triggerOptions.order_shipped"), hint: t("automations.triggerHints.order_shipped") },
+    { value: "order_cancelled" as AutomationTriggerType, label: t("automations.triggerOptions.order_cancelled"), hint: t("automations.triggerHints.order_cancelled") },
+    { value: "order_refunded" as AutomationTriggerType, label: t("automations.triggerOptions.order_refunded"), hint: t("automations.triggerHints.order_refunded") },
+    { value: "order_failed" as AutomationTriggerType, label: t("automations.triggerOptions.order_failed"), hint: t("automations.triggerHints.order_failed") },
   ]
 }
 
@@ -708,6 +718,202 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
 }
 
 // ------------------------------------------------------------
+// Send Template step — fetches approved templates from the user's
+// catalog (synced from Meta via /api/whatsapp/templates/sync),
+// parses the body's {{1}}..{{N}} placeholders, and renders an
+// input per variable. Each input accepts plain text OR the dynamic
+// placeholders the engine knows how to resolve (see the `interpolate`
+// function in lib/automations/engine.ts).
+// ------------------------------------------------------------
+
+interface ApprovedTemplate {
+  id: string
+  name: string
+  language: string
+  body_text: string | null
+  category: string | null
+}
+
+// Parses "{{1}}, {{2}}, {{10}}" out of the body and returns the unique
+// placeholder indexes in ascending numeric order. We deduplicate
+// because Meta allows the same placeholder to repeat in the body
+// (e.g. "Olá {{1}}, seu pedido {{2}} chegou, {{1}}!") and we only
+// want one input per number.
+function extractPlaceholders(body: string): string[] {
+  const seen = new Set<string>()
+  for (const m of body.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) {
+    seen.add(m[1])
+  }
+  return Array.from(seen).sort((a, b) => Number(a) - Number(b))
+}
+
+function SendTemplateConfig({
+  cfg,
+  set,
+}: {
+  cfg: Record<string, unknown>
+  set: (patch: Record<string, unknown>) => void
+}) {
+  const { t } = useTranslation()
+  const [templates, setTemplates] = useState<ApprovedTemplate[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    const supabase = createClient()
+    supabase
+      .from("message_templates")
+      .select("id, name, language, body_text, category")
+      .eq("status", "Approved")
+      .order("name", { ascending: true })
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) {
+          // Don't toast — the field still works as a free input.
+          // Just surface in console for debugging.
+          console.error("[builder] failed to load templates", error)
+        }
+        setTemplates((data as ApprovedTemplate[] | null) ?? [])
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const currentName = (cfg.template_name as string) ?? ""
+  const currentLang = (cfg.language as string) ?? ""
+  const variables = (cfg.variables as Record<string, string> | undefined) ?? {}
+
+  // Find the currently-selected template (match by name+language) so we
+  // can read its body and surface the placeholder count. Falls back to
+  // matching name only when language is empty, which happens on legacy
+  // automations that pre-date this UI.
+  const selected = useMemo(() => {
+    if (!currentName) return null
+    return (
+      templates.find(
+        (t) => t.name === currentName && (!currentLang || t.language === currentLang),
+      ) ?? null
+    )
+  }, [templates, currentName, currentLang])
+
+  const placeholders = useMemo(
+    () => extractPlaceholders(selected?.body_text ?? ""),
+    [selected],
+  )
+
+  // When the user picks a template, prefill the language and trim any
+  // saved variables whose key no longer matches a placeholder in the
+  // newly-selected template (avoids stale `cfg.variables` keys piling
+  // up across template changes).
+  function handleSelect(value: string) {
+    if (!value) {
+      set({ template_name: "", language: "", variables: {} })
+      return
+    }
+    const [name, lang] = value.split("|||")
+    const t = templates.find((x) => x.name === name && x.language === lang)
+    if (!t) return
+    const newPlaceholders = extractPlaceholders(t.body_text ?? "")
+    const trimmedVars: Record<string, string> = {}
+    for (const k of newPlaceholders) {
+      if (variables[k] != null) trimmedVars[k] = variables[k]
+    }
+    set({
+      template_name: t.name,
+      language: t.language,
+      variables: trimmedVars,
+    })
+  }
+
+  const selectValue = selected ? `${selected.name}|||${selected.language}` : ""
+
+  return (
+    <>
+      <FieldBlock label={t("automations.builder.templateSelectLabel")}>
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            ...
+          </div>
+        ) : templates.length === 0 ? (
+          <p className="text-xs text-amber-400">
+            {t("automations.builder.templateNoneApproved")}
+          </p>
+        ) : (
+          <select
+            value={selectValue}
+            onChange={(e) => handleSelect(e.target.value)}
+            className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white"
+          >
+            <option value="">{t("automations.builder.templateSelectPlaceholder")}</option>
+            {templates.map((tpl) => (
+              <option key={tpl.id} value={`${tpl.name}|||${tpl.language}`}>
+                {tpl.name} ({tpl.language})
+              </option>
+            ))}
+          </select>
+        )}
+      </FieldBlock>
+
+      {/* Always allow manual entry as a fallback — useful when the
+          template wasn't synced yet or when authoring an automation
+          before approval. */}
+      <FieldBlock label={t("automations.builder.templateManualLabel")}>
+        <div className="grid grid-cols-3 gap-2">
+          <Input
+            value={currentName}
+            onChange={(e) => set({ template_name: e.target.value })}
+            placeholder="template_name"
+            className="col-span-2 bg-slate-800 text-white"
+          />
+          <Input
+            value={currentLang}
+            onChange={(e) => set({ language: e.target.value })}
+            placeholder="pt_BR"
+            className="bg-slate-800 text-white"
+          />
+        </div>
+      </FieldBlock>
+
+      {selected && (
+        <FieldBlock label={t("automations.builder.templateVariablesLabel")}>
+          {placeholders.length === 0 ? (
+            <p className="text-xs text-slate-400">
+              {t("automations.builder.templateNoVariables")}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {placeholders.map((idx) => (
+                <div key={idx} className="grid grid-cols-[3rem_1fr] items-center gap-2">
+                  <span className="text-center font-mono text-xs text-slate-400">
+                    {`{{${idx}}}`}
+                  </span>
+                  <Input
+                    value={variables[idx] ?? ""}
+                    onChange={(e) =>
+                      set({
+                        variables: { ...variables, [idx]: e.target.value },
+                      })
+                    }
+                    placeholder="{{customer.name}}"
+                    className="bg-slate-800 text-white"
+                  />
+                </div>
+              ))}
+              <p className="text-xs text-slate-500">
+                {t("automations.builder.templateVariableHelp")}
+              </p>
+            </div>
+          )}
+        </FieldBlock>
+      )}
+    </>
+  )
+}
+
+// ------------------------------------------------------------
 // Per-step config editor
 // ------------------------------------------------------------
 
@@ -736,24 +942,7 @@ function StepEditor({
         </FieldBlock>
       )
     case "send_template":
-      return (
-        <>
-          <FieldBlock label={t("automations.builder.templateNameLabel")}>
-            <Input
-              value={(cfg.template_name as string) ?? ""}
-              onChange={(e) => set({ template_name: e.target.value })}
-              className="bg-slate-800 text-white"
-            />
-          </FieldBlock>
-          <FieldBlock label={t("automations.builder.languageLabel")}>
-            <Input
-              value={(cfg.language as string) ?? ""}
-              onChange={(e) => set({ language: e.target.value })}
-              className="bg-slate-800 text-white"
-            />
-          </FieldBlock>
-        </>
-      )
+      return <SendTemplateConfig cfg={cfg} set={set} />
     case "add_tag":
     case "remove_tag":
       return (
