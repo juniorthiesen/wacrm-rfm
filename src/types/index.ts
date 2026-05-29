@@ -256,7 +256,17 @@ export type AutomationTriggerType =
   | 'new_contact_created'
   | 'conversation_assigned'
   | 'tag_added'
-  | 'time_based';
+  | 'time_based'
+  // E-commerce / WooCommerce order lifecycle. Triggered by the
+  // WooCommerce webhook on a status transition (not on every upsert).
+  // See src/app/api/integrations/woocommerce/webhook/route.ts and
+  // docs/woocommerce-integration.md.
+  | 'order_received'
+  | 'order_paid'
+  | 'order_shipped'
+  | 'order_cancelled'
+  | 'order_refunded'
+  | 'order_failed';
 
 export type AutomationStepType =
   | 'send_message'

@@ -30,6 +30,29 @@ export interface AutomationContext {
   vars?: Record<string, unknown>
   /** The tag id that was added, for tag_added trigger. */
   tag_id?: string
+  /**
+   * E-commerce order context — populated by external-platform webhooks
+   * (e.g. WooCommerce) when firing the `order_*` family of triggers.
+   * Used to interpolate `{{order.X}}` and `{{customer.X}}` placeholders
+   * in send_template step variables.
+   */
+  order?: {
+    number?: string
+    total?: number | string
+    currency?: string
+    status?: string
+    tracking_code?: string
+    platform?: string
+    [key: string]: unknown
+  }
+  customer?: {
+    name?: string
+    first_name?: string
+    last_name?: string
+    phone?: string
+    email?: string
+    [key: string]: unknown
+  }
   /** Agent the conversation was assigned to, for conversation_assigned. */
   agent_id?: string
 }
@@ -334,7 +357,12 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
               if (bNum) return 1
               return a.localeCompare(b)
             })
-            .map((k) => String(cfg.variables![k]))
+            // Interpolate {{customer.X}} / {{order.X}} / {{vars.X}} /
+            // {{message.text}} so users can author template variables
+            // with dynamic placeholders. Without this step a value
+            // like "{{customer.name}}" would reach Meta verbatim and
+            // the customer would see the literal placeholder text.
+            .map((k) => interpolate(String(cfg.variables![k]), args))
         : []
       const { whatsapp_message_id } = await engineSendTemplate({
         userId: args.automation.user_id,
@@ -543,6 +571,17 @@ function interpolate(s: string, args: ExecuteArgs): string {
     const [ns, prop] = String(key).split('.')
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
     if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
+    // {{order.X}} and {{customer.X}} are populated by webhook integrations
+    // such as WooCommerce. Missing values render as empty string, matching
+    // the rest of this function's contract — never inject 'undefined'.
+    if (ns === 'order' && prop) {
+      const v = args.context.order?.[prop]
+      return v == null ? '' : String(v)
+    }
+    if (ns === 'customer' && prop) {
+      const v = args.context.customer?.[prop]
+      return v == null ? '' : String(v)
+    }
     return ''
   })
 }

@@ -3,6 +3,38 @@ import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/lib/integrations/phone-normalization";
 import { recalculateUserRFM } from "@/lib/rfm/engine";
+import { runAutomationsForTrigger } from "@/lib/automations/engine";
+import type { AutomationTriggerType } from "@/types";
+
+// Map the WooCommerce order status to our automation trigger type.
+// We only fire on **status transitions** (i.e. status changed from
+// previous value), so users don't get spammed when WC sends repeated
+// upserts for the same order. Statuses outside this map (e.g. "on-hold",
+// custom plugin statuses) intentionally don't fire any trigger.
+//
+// WC's standard lifecycle: pending → processing → completed
+//   - pending     → awaiting payment ("Pedido Recebido")
+//   - processing  → payment confirmed ("Pagamento Aprovado")
+//   - completed   → order fulfilled / shipped ("Pedido Enviado")
+//   - cancelled / refunded / failed → side branches
+function statusToTrigger(status: string): AutomationTriggerType | null {
+  switch (status) {
+    case "pending":
+      return "order_received";
+    case "processing":
+      return "order_paid";
+    case "completed":
+      return "order_shipped";
+    case "cancelled":
+      return "order_cancelled";
+    case "refunded":
+      return "order_refunded";
+    case "failed":
+      return "order_failed";
+    default:
+      return null;
+  }
+}
 
 // Lazy-initialized admin client to bypass RLS policies
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -180,6 +212,21 @@ export async function POST(request: Request) {
       ? new Date(payload.date_created_gmt + "Z").toISOString()
       : new Date().toISOString();
 
+    // Look up the previous order row (if any) BEFORE the upsert, so we
+    // can detect a status transition. Without this we'd fire the same
+    // trigger every time WC re-sends a webhook for the same order (it
+    // re-sends on every minor edit), spamming the customer.
+    const { data: previousOrder } = await db
+      .from("orders")
+      .select("status")
+      .eq("user_id", userId)
+      .eq("platform", "woocommerce")
+      .eq("external_order_id", externalOrderId)
+      .maybeSingle();
+
+    const previousStatus = previousOrder?.status ?? null;
+    const statusChanged = previousStatus !== status;
+
     const { error: orderError } = await db
       .from("orders")
       .upsert({
@@ -206,6 +253,73 @@ export async function POST(request: Request) {
 
     // 6. Trigger RFM Engine recalculation in the background
     void recalculateUserRFM(db, userId);
+
+    // 7. Fire the matching automation trigger ONLY on a real status
+    // transition (not on every upsert WooCommerce sends). The automation
+    // engine looks up active automations whose trigger_type matches and
+    // runs their steps — typically a `send_template` to dispatch the
+    // approved Utility HSM to the customer.
+    //
+    // Awaited (not fire-and-forget) for the same reason as the WhatsApp
+    // webhook: Vercel serverless freezes the Lambda the moment we return,
+    // and a detached promise would never finish.
+    if (statusChanged) {
+      const triggerType = statusToTrigger(status);
+      if (triggerType) {
+        const firstName =
+          payload.billing?.first_name || payload.shipping?.first_name || "";
+        const lastName =
+          payload.billing?.last_name || payload.shipping?.last_name || "";
+        const customerName =
+          `${firstName} ${lastName}`.trim() ||
+          contact?.name ||
+          "Cliente";
+
+        // Tracking codes can live in several plugin-specific places on
+        // the order — try the common ones, fall back to empty string so
+        // template interpolation never renders 'undefined'.
+        const trackingCode =
+          payload.shipment_tracking?.[0]?.tracking_number ||
+          payload.meta_data?.find(
+            (m: { key?: string; value?: unknown }) =>
+              m.key === "_tracking_number" || m.key === "tracking_number"
+          )?.value ||
+          "";
+
+        try {
+          await runAutomationsForTrigger({
+            userId,
+            triggerType,
+            contactId: contact?.id ?? null,
+            context: {
+              order: {
+                number: orderNumber,
+                total: totalAmount,
+                currency,
+                status,
+                tracking_code: String(trackingCode),
+                platform: "woocommerce",
+              },
+              customer: {
+                name: customerName,
+                first_name: firstName,
+                last_name: lastName,
+                phone: normalizedPhone ?? undefined,
+                email: email ?? undefined,
+              },
+            },
+          });
+        } catch (err) {
+          // runAutomationsForTrigger contracts to never throw, but
+          // defense in depth — never let an automation failure
+          // surface as a 5xx to WooCommerce (which would retry).
+          console.error(
+            "[woocommerce-webhook] Automation dispatch failed:",
+            err
+          );
+        }
+      }
+    }
 
     return NextResponse.json({ success: true, order_id: externalOrderId });
   } catch (error) {
