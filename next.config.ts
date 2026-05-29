@@ -54,6 +54,11 @@ const SECURITY_HEADERS = [
 ] as const;
 
 const nextConfig: NextConfig = {
+  // Emit a self-contained server bundle under .next/standalone so the
+  // production Docker image can ship only the files it needs to run
+  // (no node_modules, no source). See Dockerfile for how it's used.
+  output: "standalone",
+
   /**
    * Cache-Control policy.
    *

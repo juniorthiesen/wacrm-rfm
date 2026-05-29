@@ -1,0 +1,99 @@
+# Compose for the WaCRM app side of the deployment.
+#
+# This file does NOT include the Supabase stack — Supabase is run
+# from its own official compose (https://github.com/supabase/supabase
+# → docker/docker-compose.yml). We join that stack's network so
+# the app can talk to Kong, and so the migrate one-shot can talk
+# straight to Postgres.
+#
+# See docs/deploy-vps.md for the full deploy walkthrough.
+
+name: wacrm
+
+services:
+  # -------------------------------------------------------------
+  # Next.js app — bound to 127.0.0.1 only. CloudPanel/Nginx is the
+  # public TLS terminator; nothing in here should ever listen on
+  # the public interface.
+  # -------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+    image: wacrm-app:latest
+    container_name: wacrm-app
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    ports:
+      - "127.0.0.1:${APP_PORT:-3210}:3000"
+    networks:
+      - supabase
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # -------------------------------------------------------------
+  # One-shot migration runner. Applies every *.sql in
+  # supabase/migrations against the Supabase Postgres in order.
+  # Exits 0 on success — `app` waits for that before starting.
+  # Re-runs on every `docker compose up`; migrations are written
+  # to be idempotent (CREATE … IF NOT EXISTS, DROP POLICY IF
+  # EXISTS, etc.) so this is safe.
+  # -------------------------------------------------------------
+  migrate:
+    image: postgres:15-alpine
+    container_name: wacrm-migrate
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./supabase/migrations:/migrations:ro
+      - ./scripts/deploy/run-migrations.sh:/run-migrations.sh:ro
+    entrypoint: ["/bin/sh", "/run-migrations.sh"]
+    networks:
+      - supabase
+
+  # -------------------------------------------------------------
+  # Cron pinger for /api/automations/cron. Drains Wait steps in
+  # the automation engine once a minute. If you don't use Wait
+  # steps you can `docker compose stop automation-cron` — the
+  # endpoint will still be reachable for ad-hoc curl.
+  # -------------------------------------------------------------
+  automation-cron:
+    image: alpine:3.20
+    container_name: wacrm-automation-cron
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      AUTOMATION_CRON_SECRET: ${AUTOMATION_CRON_SECRET}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache curl >/dev/null
+        while true; do
+          curl -fsS -m 30 \
+            -H "Authorization: Bearer $$AUTOMATION_CRON_SECRET" \
+            "http://app:3000/api/automations/cron" >/dev/null 2>&1 || true
+          sleep 60
+        done
+    networks:
+      - supabase
+
+networks:
+  # `supabase` is the default network the upstream Supabase compose
+  # creates. We join it as `external: true` so we can talk to its
+  # services by name (db, kong, …) without redefining them.
+  #
+  # If you started Supabase from supabase/docker, the network is
+  # called `supabase_default`. Override via:
+  #   SUPABASE_NETWORK=supabase_default docker compose up -d
+  supabase:
+    name: ${SUPABASE_NETWORK:-supabase_default}
+    external: true
