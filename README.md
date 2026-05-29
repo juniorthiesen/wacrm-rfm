@@ -1,102 +1,139 @@
-# wacrm — CRM Template for WhatsApp
+# 💬 wacrm-rfm — WhatsApp CRM & RFM Intelligence
 
-> Self-hostable CRM template for WhatsApp® — shared inbox, contacts,
-> sales pipelines, broadcasts, and no-code automations. Fork it, brand
-> it, host it.
+> O template de CRM auto-hospedável definitivo para WhatsApp®, turbinado com rastreamento de atribuição de anúncios da Meta e inteligência analítica RFM (Recency, Frequency, Monetary).
 
-[![Deploy on Hostinger](https://img.shields.io/badge/Deploy_on-Hostinger-673DE6?style=for-the-badge&logo=hostinger&logoColor=white)](https://www.hostinger.com/web-apps-hosting)
+<div align="center">
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-violet.svg)](./LICENSE)
-[![CI](https://github.com/ArnasDon/wacrm/actions/workflows/ci.yml/badge.svg)](https://github.com/ArnasDon/wacrm/actions/workflows/ci.yml)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org)
-[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ecf8e?logo=supabase)](https://supabase.com)
-[![Stars](https://img.shields.io/github/stars/ArnasDon/wacrm?style=social)](https://github.com/ArnasDon/wacrm/stargazers)
+[![Licença: MIT](https://img.shields.io/badge/Licensa-MIT-violet.svg?style=for-the-badge)](./LICENSE)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16--Turbopack-black?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ecf8e?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
+[![Docker](https://img.shields.io/badge/Docker-Compatible-blue?style=for-the-badge&logo=docker&logoColor=white)](#)
 
-The marketing site and self-host docs live in a separate repo:
-[ArnasDon/wacrm-site](https://github.com/ArnasDon/wacrm-site)
-([wacrm.tech](https://wacrm.tech)). This repo is the product —
-clone or fork it to run your own CRM.
+</div>
 
-## What you get out of the box
+---
 
-- **Shared inbox** on the official WhatsApp Business API — multiple
-  agents working one number, per-conversation assignment, status, and
-  notes.
-- **Contacts + tags + custom fields**, CSV import, deduplication.
-- **Sales pipelines** (Kanban) with deals linked to conversations.
-- **Broadcasts** with Meta-approved templates, delivery + read
-  tracking, per-recipient variable substitution.
-- **No-code automations** — triggers on inbound messages, new
-  contacts, keywords, or schedule; conditional branches, waits,
-  tags, webhooks. Visual builder.
-- **Real-time dashboard** — response times, daily volume, pipeline
-  value, cross-module activity feed.
-- **Account management** — email, password, avatar, global sign-out.
+## ✨ O que é o wacrm-rfm?
 
-## Why fork this?
+O **wacrm-rfm** é um fork avançado do `wacrm`. Ele foi desenhado para equipes que não querem apenas gerenciar conversas de WhatsApp, mas desejam **extrair inteligência de dados, mensurar o ROI real das campanhas de tráfego pago e segmentar clientes de forma altamente estratégica** usando o modelo matemático **RFM** (Recência, Frequência e Valor Monetário).
 
-This is a **template**, not a product. Forking means you get:
-
-- **Full ownership** — your code, your Supabase project, your domain,
-  your data. No SaaS lock-in, no seat pricing, no trust dance.
-- **Full customisation** — add the fields your team needs, remove the
-  modules you don't, redesign anything. The stack is boring on
-  purpose (Next.js + Supabase + Tailwind) so the learning curve is
-  short.
-- **Zero ops to start** — Hostinger Managed Node.js deploys a fork in
-  a few clicks. No Docker, no Kubernetes, no infra team needed.
-- **Real security primitives** — token encryption (AES-256-GCM), RLS
-  on every table, HMAC-verified webhooks, CSP, rate limiting, CI
-  typecheck/build on every PR.
-
-Not a framework. Not an SDK. A concrete, working CRM you can stand up
-in an afternoon and make yours.
-
-## Quick start
-
-```bash
-# Fork on GitHub first: https://github.com/ArnasDon/wacrm → Fork
-git clone https://github.com/<your-username>/wacrm.git
-cd wacrm
-npm install
-cp .env.local.example .env.local   # fill in Supabase + Meta creds
-npm run dev
+```mermaid
+graph TD
+    A[Clique no WhatsApp Ads] -->|Atribuição Automática/Manual| B[Inbox Compartilhada]
+    B -->|Pipeline de Vendas| C[Negócio Fechado / Ganho]
+    C -->|Cálculo em Tempo Real| D[Motor de Análise RFM]
+    D -->|Segmentação de Clientes| E[Campanhas de Reengajamento]
+    E -->|Broadcasts Personalizados| A
 ```
 
-Open <http://localhost:3000>. You'll be redirected to `/login` (or
-`/dashboard` if already signed in).
+---
 
-## Documentation
+## 🚀 Módulos em Destaque
 
-Full self-host documentation — Supabase migrations, WhatsApp Business
-API config, and production deploy — lives at
-**[wacrm.tech/docs](https://wacrm.tech/docs)**
-(source: [ArnasDon/wacrm-site](https://github.com/ArnasDon/wacrm-site)).
+### 1. 📥 Caixa de Entrada Compartilhada (Shared Inbox)
+- Gerenciamento multi-agente de um único número oficial do WhatsApp.
+- Organização por status de conversa, atribuição de responsáveis e notas internas.
+- Suporte a modelos de mensagem oficiais aprovados pela Meta.
 
-Key pages:
-- [Getting started](https://wacrm.tech/docs/getting-started)
-- [Supabase setup](https://wacrm.tech/docs/supabase-setup)
-- [WhatsApp setup](https://wacrm.tech/docs/whatsapp-setup)
-- [Environment variables](https://wacrm.tech/docs/environment-variables)
-- [Deploy on Hostinger](https://wacrm.tech/docs/deployment-hostinger)
-- [Architecture](https://wacrm.tech/docs/architecture)
-- [Troubleshooting](https://wacrm.tech/docs/troubleshooting)
+### 2. 📊 Atribuição de Anúncios & ROI (Módulo Mensurar)
+- **Integração com a API de Marketing da Meta**: Sincronização direta de gastos, cliques, impressões e alcance de campanhas.
+- **Rastreamento de Leads**: Atribuição de contatos e negócios a campanhas específicas de origem (manual ou automática via link click-to-WhatsApp).
+- **Dashboard de Atribuição**: Gráficos de timeline de leads por campanha, custo por lead e retorno real sobre investimento (ROAS).
 
-## Stack
+### 3. 🚦 Funil de Vendas Kanban (Pipelines)
+- Quadro visual interativo para gerenciar oportunidades e negócios.
+- Vinculação direta entre negócios abertos e o histórico de conversas no WhatsApp.
+- Atualização em tempo real de estatísticas do funil.
 
-- **App** — Next.js 16 (App Router), React 19, TypeScript, Tailwind v4.
-- **Data** — Supabase (Postgres + Auth + Storage + RLS).
-- **WhatsApp** — Meta Cloud API (official WhatsApp Business API).
+### 4. ⚙️ Automação Sem Código (Flows & Automations)
+- Gatilhos baseados em novas mensagens recebidas, palavras-chave específicas, horários ou novos contatos.
+- Construção visual de fluxos com condicionais, timers de espera, adição automática de tags e disparos de Webhooks.
 
-## Contributing
+---
 
-This is a template, not a collaborative product — the expected flow is
-fork → customise → deploy, **not** upstream contribution. Bug reports
-and security issues are welcome; feature PRs often belong in your fork
-rather than here. Details in
-[`CONTRIBUTING.md`](./CONTRIBUTING.md) and
-[`.github/SECURITY.md`](./.github/SECURITY.md).
+## 🗺️ Futuras Implementações & Roadmap (O "RFM" no Nome)
 
-## License
+Estamos transformando este CRM na ferramenta analítica de WhatsApp mais completa do mercado auto-hospedado. Abaixo estão as próximas implementações programadas para o núcleo de inteligência:
 
-[MIT](./LICENSE). Fork it, brand it, host it.
+### 🏆 Motor de Análise RFM Automático
+- [ ] **R - Recência (Recency)**: Identificar há quantos dias cada cliente interagiu ou comprou pela última vez.
+- [ ] **F - Frequência (Frequency)**: Medir o volume de conversões/compras de cada cliente num período de 30, 90 e 180 dias.
+- [ ] **M - Monetário (Monetary)**: Somar o valor total gerado por cada contato no funil de vendas.
+- [ ] **Segmentação Dinâmica**: Distribuição automática de tags como:
+  * 👑 *Campeões* (Compram sempre, gastam muito, compraram recentemente)
+  * 📈 *Clientes Fiéis* (Compram recorrentemente)
+  * ⚠️ *Quase Adormecidos* (Não compram há algum tempo)
+  * 🚨 *Em Risco* (Estão sumindo e precisam de reengajamento urgente)
+  * ❄️ *Hibernando / Perdidos* (Longos períodos sem compra ou interação)
+
+### 📲 Disparos de Broadcast Baseados em Segmento RFM
+- [ ] **Automações de Recuperação**: Enviar cupons ou mensagens personalizadas via WhatsApp assim que um cliente transicionar para o segmento *"Quase Adormecido"*.
+- [ ] **Agradecimento VIP**: Mensagens especiais automatizadas para o grupo de *Campeões*.
+
+### 🔗 Meta Conversions API (CAPI) Integration
+- [ ] Retorno automático de eventos de conversão (ex: "Negócio Ganho" no funil) diretamente para a Meta via API, melhorando o aprendizado do pixel e reduzindo o Custo por Lead (CPL).
+
+---
+
+## 🛠️ Stack Tecnológica
+
+- **Frontend / Backend**: Next.js 16 (App Router com Turbopack), React 19, TypeScript e Tailwind CSS v4.
+- **Banco de Dados & Autenticação**: Supabase (PostgreSQL, Row Level Security habilitado para isolamento de dados de usuários, Storage).
+- **Provedor de WhatsApp**: API Oficial Cloud do WhatsApp (Meta Business API).
+
+---
+
+## 🔧 Configuração e Inicialização Local
+
+Para rodar o projeto localmente com suporte completo à infraestrutura (incluindo Supabase via Docker local):
+
+### Pré-requisitos
+- Node.js `>= 20.0.0`
+- Docker (opcional, para rodar o banco de dados Supabase local)
+
+### Instalação
+1. Clone o seu fork do projeto:
+   ```bash
+   git clone git@github.com:juniorthiesen/wacrm-rfm.git
+   cd wacrm-rfm
+   ```
+
+2. Instale as dependências:
+   ```bash
+   npm install
+   ```
+
+3. Configure as variáveis de ambiente:
+   ```bash
+   cp .env.local.example .env.local
+   # Preencha as credenciais do Supabase e as chaves de encriptação
+   ```
+
+4. Suba o Supabase Localmente (Docker):
+   ```bash
+   npx supabase start
+   ```
+
+5. Aplique as migrações mais recentes no banco local:
+   ```bash
+   npx supabase db push --local
+   ```
+
+6. Execute o servidor de desenvolvimento:
+   ```bash
+   npm run dev
+   ```
+
+Acesse o sistema em [http://localhost:3000](http://localhost:3000).
+
+---
+
+## 🛡️ Segurança de Ponta
+- **Criptografia Simétrica (AES-256-GCM)**: O token de acesso do WhatsApp Business e da Meta Ads API são armazenados criptografados de ponta a ponta no banco de dados.
+- **Políticas de Linha (RLS)**: Cada consulta SQL é filtrada a nível de banco utilizando as políticas do Supabase, garantindo que usuários nunca visualizem dados de outros.
+
+---
+
+## 📄 Licença
+
+Distribuído sob a licença **MIT**. Sinta-se livre para clonar, alterar, colocar sua própria marca e subir em produção!
