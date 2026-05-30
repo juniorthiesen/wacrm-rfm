@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
@@ -733,6 +733,9 @@ interface ApprovedTemplate {
   language: string
   body_text: string | null
   category: string | null
+  header_type: string | null
+  header_content: string | null
+  footer_text: string | null
 }
 
 // Parses "{{1}}, {{2}}, {{10}}" out of the body and returns the unique
@@ -746,6 +749,33 @@ function extractPlaceholders(body: string): string[] {
     seen.add(m[1])
   }
   return Array.from(seen).sort((a, b) => Number(a) - Number(b))
+}
+
+// Splits a template body/header/footer into plain text + highlighted
+// {{N}} chips, so the preview shows operators exactly where each
+// variable will be injected.
+function renderTemplateText(text: string): ReactNode {
+  const parts: ReactNode[] = []
+  const regex = /\{\{\s*(\d+)\s*\}\}/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  let key = 0
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index))
+    }
+    parts.push(
+      <span
+        key={`ph-${key++}`}
+        className="mx-0.5 rounded bg-primary/20 px-1 font-mono text-[0.7rem] text-primary"
+      >
+        {`{{${match[1]}}}`}
+      </span>,
+    )
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex))
+  return parts
 }
 
 function SendTemplateConfig({
@@ -764,7 +794,7 @@ function SendTemplateConfig({
     const supabase = createClient()
     supabase
       .from("message_templates")
-      .select("id, name, language, body_text, category")
+      .select("id, name, language, body_text, category, header_type, header_content, footer_text")
       .eq("status", "Approved")
       .order("name", { ascending: true })
       .then(({ data, error }) => {
@@ -857,6 +887,41 @@ function SendTemplateConfig({
           </select>
         )}
       </FieldBlock>
+
+      {selected && (
+        <FieldBlock label={t("automations.builder.templatePreviewLabel")}>
+          <div className="space-y-2 rounded-lg border border-slate-700 bg-slate-800/60 p-3 text-sm text-slate-100">
+            <div className="flex items-center gap-2 text-[0.65rem] uppercase tracking-wide text-slate-400">
+              <span className="rounded bg-slate-700/70 px-1.5 py-0.5">
+                {selected.language}
+              </span>
+              {selected.category && (
+                <span className="rounded bg-slate-700/70 px-1.5 py-0.5">
+                  {selected.category}
+                </span>
+              )}
+            </div>
+            {selected.header_type === "text" && selected.header_content && (
+              <div className="font-semibold leading-snug">
+                {renderTemplateText(selected.header_content)}
+              </div>
+            )}
+            {selected.header_type && selected.header_type !== "text" && (
+              <div className="text-xs italic text-slate-400">
+                [{selected.header_type}]
+              </div>
+            )}
+            <div className="whitespace-pre-wrap leading-snug">
+              {renderTemplateText(selected.body_text ?? "")}
+            </div>
+            {selected.footer_text && (
+              <div className="whitespace-pre-wrap text-xs text-slate-400">
+                {selected.footer_text}
+              </div>
+            )}
+          </div>
+        </FieldBlock>
+      )}
 
       {/* Always allow manual entry as a fallback — useful when the
           template wasn't synced yet or when authoring an automation
