@@ -45,6 +45,7 @@ export async function POST(request: Request) {
       content_text,
       media_url,
       template_name,
+      template_language,
       template_params,
       reply_to_message_id,
     } = body
@@ -184,6 +185,11 @@ export async function POST(request: Request) {
           accessToken,
           to: phone,
           templateName: template_name,
+          // Forward the template's own language code. Falling back to
+          // en_US (meta-api default) was the cause of "(#132001)
+          // Template name does not exist in the translation" for pt_BR
+          // templates sent from the inbox.
+          language: template_language || undefined,
           params: template_params || [],
           contextMessageId,
         })
