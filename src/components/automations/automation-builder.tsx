@@ -975,7 +975,112 @@ function SendTemplateConfig({
           )}
         </FieldBlock>
       )}
+
+      {(selected || currentName) && (
+        <TemplateTestSend
+          templateName={currentName}
+          language={currentLang}
+          placeholders={placeholders}
+          variables={variables}
+        />
+      )}
     </>
+  )
+}
+
+// Persists the last-used test phone in localStorage so operators don't
+// have to retype their own number on every template they build.
+const TEST_PHONE_STORAGE_KEY = "wacrm:template-test-phone"
+
+function TemplateTestSend({
+  templateName,
+  language,
+  placeholders,
+  variables,
+}: {
+  templateName: string
+  language: string
+  placeholders: string[]
+  variables: Record<string, string>
+}) {
+  const { t } = useTranslation()
+  const [phone, setPhone] = useState("")
+  const [sending, setSending] = useState(false)
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(TEST_PHONE_STORAGE_KEY)
+      if (saved) setPhone(saved)
+    } catch {
+      // localStorage unavailable (private mode / SSR) — fine, just no default
+    }
+  }, [])
+
+  async function handleSend() {
+    if (!phone.trim() || !templateName.trim()) return
+    setSending(true)
+    try {
+      window.localStorage.setItem(TEST_PHONE_STORAGE_KEY, phone.trim())
+    } catch {
+      // ignore — non-fatal
+    }
+    // Meta wants the body params as a positional array. We send the
+    // literal text the operator typed (e.g. "{{customer.name}}") — no
+    // interpolation. For a real test value, the operator types a real
+    // value into the variable input.
+    const params = placeholders.map((idx) => variables[idx] ?? "")
+    try {
+      const res = await fetch("/api/whatsapp/templates/test-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: phone.trim(),
+          template_name: templateName,
+          language: language || "en_US",
+          params,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data?.error ?? t("automations.builder.templateTestError"))
+      } else {
+        toast.success(t("automations.builder.templateTestSuccess"))
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Network error")
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <FieldBlock label={t("automations.builder.templateTestLabel")}>
+      <div className="space-y-2">
+        <div className="grid grid-cols-[1fr_auto] gap-2">
+          <Input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="5511999999999"
+            className="bg-slate-800 text-white"
+          />
+          <Button
+            type="button"
+            onClick={handleSend}
+            disabled={sending || !phone.trim() || !templateName.trim()}
+            className="whitespace-nowrap"
+          >
+            {sending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              t("automations.builder.templateTestButton")
+            )}
+          </Button>
+        </div>
+        <p className="text-xs text-amber-400/80">
+          {t("automations.builder.templateTestWarning")}
+        </p>
+      </div>
+    </FieldBlock>
   )
 }
 
