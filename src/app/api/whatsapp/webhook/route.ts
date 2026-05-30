@@ -44,6 +44,13 @@ interface WhatsAppMessage {
     button_reply?: { id: string; title: string }
     list_reply?: { id: string; title: string; description?: string }
   }
+  /**
+   * Set when the customer taps a quick-reply button on a **template**
+   * message (different payload shape from `interactive.button_reply`).
+   * `payload` is the value defined on the template button at approval
+   * time; `text` is the visible label the customer tapped.
+   */
+  button?: { payload: string; text: string }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
 }
@@ -835,6 +842,23 @@ async function parseMessageContent(
         }
       }
       return { ...empty, contentText: '[Interactive reply]' }
+    }
+
+    case 'button': {
+      // Quick-reply button on a *template* message — different payload
+      // shape from `interactive.button_reply`. We surface the visible
+      // label as contentText (so the inbox bubble reads naturally) and
+      // map `payload` to interactiveReplyId so the Flows engine and any
+      // automations that key off `interactive_reply_id` treat template
+      // button taps the same as interactive button taps.
+      if (message.button) {
+        return {
+          ...empty,
+          contentText: message.button.text || message.button.payload,
+          interactiveReplyId: message.button.payload,
+        }
+      }
+      return { ...empty, contentText: '[Template button]' }
     }
 
     default:
