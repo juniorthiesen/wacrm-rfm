@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/lib/integrations/phone-normalization";
 import { recalculateUserRFM } from "@/lib/rfm/engine";
 import { runAutomationsForTrigger } from "@/lib/automations/engine";
+import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import type { AutomationTriggerType } from "@/types";
 
 // Map the WooCommerce order status to our automation trigger type.
@@ -150,6 +151,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
     }
 
+    // 0. Rate-limit per-store. Generous enough for a Black Friday
+    // burst, capped so a misbehaving WC instance can't flood our Meta
+    // send budget. WC retries on 429 with backoff so we never lose
+    // events to throttling.
+    const limit = checkRateLimit(`wc-webhook:${userId}`, RATE_LIMITS.webhook);
+    if (!limit.success) return rateLimitResponse(limit);
+
     // 1. Fetch integration config to get webhook_secret
     const { data: config, error: configError } = await supabaseAdmin()
       .from("integration_configs")
@@ -168,6 +176,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Integration inactive" }, { status: 400 });
     }
 
+    // Refuse to operate without a configured secret. Earlier behavior
+    // silently skipped HMAC verification when webhook_secret was null,
+    // meaning anyone who guessed a valid user_id could fire fake
+    // webhooks and burn the operator's Meta send quota. PUT /config
+    // also blocks `status='active'` without a secret as defense in
+    // depth — this is the runtime guard.
+    if (!config.webhook_secret) {
+      console.error(
+        "[woocommerce-webhook] No webhook_secret configured for user:",
+        userId,
+      );
+      return NextResponse.json(
+        { error: "Webhook secret not configured" },
+        { status: 401 },
+      );
+    }
+
     // 2. Read raw body and verify HMAC signature
     const rawBody = await request.text();
     const signature = request.headers.get("x-wc-webhook-signature");
@@ -184,16 +209,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing signature" }, { status: 401 });
     }
 
-    if (config.webhook_secret) {
-      const computedSignature = crypto
-        .createHmac("sha256", config.webhook_secret)
-        .update(rawBody)
-        .digest("base64");
+    const computedSignature = crypto
+      .createHmac("sha256", config.webhook_secret)
+      .update(rawBody)
+      .digest("base64");
 
-      if (signature !== computedSignature) {
-        console.warn("[woocommerce-webhook] Signature verification failed");
-        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-      }
+    if (signature !== computedSignature) {
+      console.warn("[woocommerce-webhook] Signature verification failed");
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
     // 3. Parse payload

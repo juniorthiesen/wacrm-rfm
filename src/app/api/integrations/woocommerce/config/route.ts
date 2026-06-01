@@ -119,6 +119,22 @@ export async function PUT(request: Request) {
 
   const status = body.status ?? existing?.status ?? "inactive"
 
+  // Defense in depth — the webhook route also rejects requests when
+  // webhook_secret is null, but blocking activation here surfaces the
+  // mistake at config-save time instead of at the first delivery
+  // (which would look like a working integration that silently never
+  // fires). Inactive rows are allowed without a secret so operators
+  // can stage credentials before flipping the toggle.
+  if (status === "active" && !webhookSecret) {
+    return NextResponse.json(
+      {
+        error:
+          "Cannot activate WooCommerce integration without a webhook secret. Use regenerate_secret=true or provide webhook_secret.",
+      },
+      { status: 400 },
+    )
+  }
+
   const row = {
     user_id: user.id,
     platform: "woocommerce" as const,

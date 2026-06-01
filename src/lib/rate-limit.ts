@@ -125,6 +125,12 @@ export const RATE_LIMITS = {
    *  fidget with reactions and a single "swap" is actually two calls
    *  (remove + add) under the hood. */
   react: { limit: 120, windowMs: 60_000 },
+  /** Inbound integration webhook (WooCommerce). Generous enough that a
+   *  Black Friday burst from a single store doesn't hit the ceiling
+   *  (~2/s sustained), but capped so a misbehaving WC instance can't
+   *  flood our Meta send budget. WC retries with backoff on 429, so a
+   *  brief throttle never loses events. */
+  webhook: { limit: 120, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't
