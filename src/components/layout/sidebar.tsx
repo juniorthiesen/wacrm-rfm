@@ -20,6 +20,7 @@ import {
   User,
   X,
   BarChart2,
+  Target,
 } from "lucide-react";
 import {
   Avatar,
@@ -54,6 +55,7 @@ const navItems: NavItem[] = [
   { href: "/automations", label: "Automations", icon: Zap },
   { href: "/flows", label: "Flows", icon: Workflow, beta: true },
   { href: "/mensurar", label: "Mensurar", icon: BarChart2 },
+  { href: "/rfm", label: "RFM", icon: Target },
 ];
 
 const bottomNavItems = [
@@ -69,6 +71,7 @@ const labelKeyMap: Record<string, string> = {
   "Automations": "nav.automations",
   "Flows": "nav.flows",
   "Mensurar": "nav.mensurar",
+  "RFM": "nav.rfm",
   "Settings": "nav.settings",
 };
 
