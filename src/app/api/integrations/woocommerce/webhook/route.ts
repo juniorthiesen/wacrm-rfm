@@ -5,6 +5,7 @@ import { normalizePhone } from "@/lib/integrations/phone-normalization";
 import { recalculateUserRFM } from "@/lib/rfm/engine";
 import { runAutomationsForTrigger } from "@/lib/automations/engine";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
+import { normalizeLineItems } from "@/lib/commerce/line-items";
 import type { AutomationTriggerType } from "@/types";
 
 // Map the WooCommerce order status to our automation trigger type.
@@ -348,6 +349,8 @@ export async function POST(request: Request) {
     const previousStatus = previousOrder?.status ?? null;
     const statusChanged = previousStatus !== status;
 
+    const lineItems = normalizeLineItems(payload.line_items, "woocommerce");
+
     const { error: orderError } = await db
       .from("orders")
       .upsert({
@@ -362,6 +365,7 @@ export async function POST(request: Request) {
         customer_email: email,
         customer_phone: normalizedPhone,
         ordered_at: orderedAt,
+        line_items: lineItems,
         updated_at: new Date().toISOString(),
       }, {
         onConflict: "user_id,platform,external_order_id"

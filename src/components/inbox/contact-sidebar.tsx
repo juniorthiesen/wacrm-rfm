@@ -20,6 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { ptBR, enUS } from "date-fns/locale";
 import { useTranslation } from "@/hooks/use-translation";
+import { CommerceSection } from "./commerce-section";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -202,6 +203,12 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               )}
             </div>
           </div>
+
+          {/* Divider */}
+          <div className="my-4 border-t border-slate-800" />
+
+          {/* E-commerce */}
+          <CommerceSection contactId={contact.id} />
 
           {/* Divider */}
           <div className="my-4 border-t border-slate-800" />
