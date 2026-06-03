@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
-import { normalizePhone } from "@/lib/integrations/phone-normalization";
 import { recalculateUserRFM } from "@/lib/rfm/engine";
 import { runAutomationsForTrigger } from "@/lib/automations/engine";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
-import { normalizeLineItems } from "@/lib/commerce/line-items";
+import { ingestOrder } from "@/lib/commerce/order-ingestion";
+import { normalizePhone } from "@/lib/integrations/phone-normalization";
 import type { AutomationTriggerType } from "@/types";
 
 // Map the WooCommerce order status to our automation trigger type.
@@ -229,98 +229,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
-    // Extract customer phone and email
-    const rawPhone = payload.billing?.phone || payload.shipping?.phone || null;
-    const normalizedPhone = normalizePhone(rawPhone);
-    const email = payload.billing?.email || null;
-
-    if (!normalizedPhone && !email) {
-      console.warn("[woocommerce-webhook] Order contains neither valid phone nor email");
-    }
-
-    // 4. Find or create WACRM contact
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let contact: any = null;
+    // 4. Normalize the WC payload and ingest the order. `ingestOrder`
+    // handles contact match (phone → email → create), platform tag, and
+    // status-transition detection. Same code path is reused by the
+    // REST-API sync engine.
     const db = supabaseAdmin();
 
-    if (normalizedPhone) {
-      const { data } = await db
-        .from("contacts")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("phone", normalizedPhone)
-        .maybeSingle();
-      contact = data;
-    }
-
-    if (!contact && email) {
-      const { data } = await db
-        .from("contacts")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("email", email)
-        .limit(1);
-      if (data && data.length > 0) {
-        contact = data[0];
-      }
-    }
-
-    if (!contact && (normalizedPhone || email)) {
-      const firstName = payload.billing?.first_name || payload.shipping?.first_name || "";
-      const lastName = payload.billing?.last_name || payload.shipping?.last_name || "";
-      const fullName = `${firstName} ${lastName}`.trim() || "WooCommerce Customer";
-
-      // contacts.phone is NOT NULL in the database schema.
-      // If the customer didn't provide a phone, generate a placeholder value to avoid INSERT constraint failure.
-      const phoneValue = normalizedPhone || `woo_${email?.replace(/[^a-zA-Z0-9]/g, "") || Math.floor(Math.random() * 1000000)}`;
-
-      const { data, error: insertError } = await db
-        .from("contacts")
-        .insert({
-          user_id: userId,
-          phone: phoneValue,
-          name: fullName,
-          email: email,
-        })
-        .select()
-        .single();
-
-      if (insertError) {
-        console.error("[woocommerce-webhook] Failed to create contact:", insertError);
-      } else {
-        contact = data;
-
-        // Assign WooCommerce tag to the new contact
-        if (contact) {
-          let tagId = null;
-          const { data: existingTag } = await db
-            .from("tags")
-            .select("id")
-            .eq("user_id", userId)
-            .eq("name", "WooCommerce")
-            .maybeSingle();
-
-          if (existingTag) {
-            tagId = existingTag.id;
-          } else {
-            const { data: newTag } = await db
-              .from("tags")
-              .insert({ user_id: userId, name: "WooCommerce", color: "#96588a" })
-              .select()
-              .single();
-            tagId = newTag?.id;
-          }
-
-          if (tagId) {
-            await db
-              .from("contact_tags")
-              .insert({ contact_id: contact.id, tag_id: tagId });
-          }
-        }
-      }
-    }
-
-    // 5. Upsert Order
     const externalOrderId = payload.id?.toString();
     if (!externalOrderId) {
       return NextResponse.json({ error: "Missing order ID in payload" }, { status: 400 });
@@ -333,48 +247,36 @@ export async function POST(request: Request) {
     const orderedAt = payload.date_created_gmt
       ? new Date(payload.date_created_gmt + "Z").toISOString()
       : new Date().toISOString();
+    const rawPhone = payload.billing?.phone || payload.shipping?.phone || null;
+    const email = payload.billing?.email || null;
 
-    // Look up the previous order row (if any) BEFORE the upsert, so we
-    // can detect a status transition. Without this we'd fire the same
-    // trigger every time WC re-sends a webhook for the same order (it
-    // re-sends on every minor edit), spamming the customer.
-    const { data: previousOrder } = await db
-      .from("orders")
-      .select("status")
-      .eq("user_id", userId)
-      .eq("platform", "woocommerce")
-      .eq("external_order_id", externalOrderId)
-      .maybeSingle();
-
-    const previousStatus = previousOrder?.status ?? null;
-    const statusChanged = previousStatus !== status;
-
-    const lineItems = normalizeLineItems(payload.line_items, "woocommerce");
-
-    const { error: orderError } = await db
-      .from("orders")
-      .upsert({
-        user_id: userId,
-        contact_id: contact?.id || null,
+    let ingestResult;
+    try {
+      ingestResult = await ingestOrder(db, userId, {
         external_order_id: externalOrderId,
         order_number: orderNumber,
-        platform: "woocommerce",
-        status: status,
+        status,
         total_amount: totalAmount,
-        currency: currency,
-        customer_email: email,
-        customer_phone: normalizedPhone,
+        currency,
         ordered_at: orderedAt,
-        line_items: lineItems,
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: "user_id,platform,external_order_id"
+        customer: {
+          first_name:
+            payload.billing?.first_name || payload.shipping?.first_name || null,
+          last_name:
+            payload.billing?.last_name || payload.shipping?.last_name || null,
+          phone_raw: rawPhone,
+          email,
+        },
+        line_items_raw: payload.line_items,
+        platform: "woocommerce",
       });
-
-    if (orderError) {
-      console.error("[woocommerce-webhook] Failed to upsert order:", orderError);
+    } catch (err) {
+      console.error("[woocommerce-webhook] Failed to ingest order:", err);
       return NextResponse.json({ error: "Failed to save order" }, { status: 500 });
     }
+
+    const { contactId, statusChanged } = ingestResult;
+    const normalizedPhone = normalizePhone(rawPhone);
 
     // 6. Trigger RFM Engine recalculation in the background
     void recalculateUserRFM(db, userId);
@@ -396,9 +298,7 @@ export async function POST(request: Request) {
         const lastName =
           payload.billing?.last_name || payload.shipping?.last_name || "";
         const customerName =
-          `${firstName} ${lastName}`.trim() ||
-          contact?.name ||
-          "Cliente";
+          `${firstName} ${lastName}`.trim() || "Cliente";
 
         // Tracking, PIX, and items list — each from a different part of
         // the WC payload. Empty string fallbacks ensure template
@@ -417,7 +317,7 @@ export async function POST(request: Request) {
           await runAutomationsForTrigger({
             userId,
             triggerType,
-            contactId: contact?.id ?? null,
+            contactId: contactId ?? null,
             context: {
               order: {
                 number: orderNumber,

@@ -11,6 +11,8 @@ import {
   EyeOff,
   Loader2,
   ExternalLink,
+  DownloadCloud,
+  StopCircle,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
@@ -340,6 +342,15 @@ export function WooCommercePanel() {
         </CardContent>
       </Card>
 
+      {/* ----- Sincronização inicial ----- */}
+      <SyncCard
+        canSync={
+          config.status === "active" &&
+          !!config.credentials.consumer_key &&
+          !!config.credentials.consumer_secret
+        }
+      />
+
       {/* ----- Webhook ----- */}
       <Card className="border-slate-800 bg-slate-900">
         <CardHeader>
@@ -431,5 +442,238 @@ export function WooCommercePanel() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Sync card — one-shot manual REST API backfill.
+// ---------------------------------------------------------------------
+
+interface SyncStateView {
+  status: "idle" | "running" | "error" | "completed"
+  phase: "orders" | "customers"
+  started_at: string | null
+  completed_at: string | null
+  orders: {
+    current_page: number
+    total_pages: number | null
+    synced_count: number
+  }
+  customers: {
+    current_page: number
+    total_pages: number | null
+    synced_count: number
+  }
+  error: string | null
+}
+
+function SyncCard({ canSync }: { canSync: boolean }) {
+  const [state, setState] = useState<SyncStateView | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [running, setRunning] = useState(false)
+
+  // Initial fetch + resume detection. If the server reports `running`,
+  // pick up where we left off (browser refresh during sync shouldn't
+  // strand progress).
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/integrations/woocommerce/sync")
+      .then((r) => (r.ok ? r.json() : { state: null }))
+      .then((json) => {
+        if (cancelled) return
+        setState(json.state ?? null)
+        setLoading(false)
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function tick(): Promise<{ done: boolean; state: SyncStateView } | null> {
+    const res = await fetch("/api/integrations/woocommerce/sync", { method: "POST" })
+    const json = await res.json()
+    if (!res.ok && res.status !== 500) {
+      toast.error(json.error ?? "Falha na sincronização")
+      return null
+    }
+    return json
+  }
+
+  async function startSync() {
+    if (!canSync || running) return
+    setRunning(true)
+    try {
+      let safety = 500 // hard cap on iterations
+      while (safety-- > 0) {
+        const result = await tick()
+        if (!result) break
+        setState(result.state)
+        if (result.state.status === "error") {
+          toast.error(`Erro: ${result.state.error}`)
+          break
+        }
+        if (result.done) {
+          toast.success(
+            `Sincronização concluída — ${result.state.orders.synced_count} pedidos, ${result.state.customers.synced_count} clientes`,
+          )
+          break
+        }
+      }
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  async function cancelSync() {
+    const res = await fetch("/api/integrations/woocommerce/sync", { method: "DELETE" })
+    const json = await res.json()
+    if (res.ok) {
+      setState(json.state)
+      toast.success("Sincronização cancelada")
+    }
+  }
+
+  const totalSynced =
+    (state?.orders.synced_count ?? 0) + (state?.customers.synced_count ?? 0)
+
+  // Progress: each phase contributes 50%. Estimate inside-phase using
+  // current_page / total_pages when known.
+  let progressPct = 0
+  if (state) {
+    const ordersPct =
+      state.orders.total_pages && state.orders.total_pages > 0
+        ? Math.min(state.orders.current_page / state.orders.total_pages, 1) * 50
+        : state.phase === "orders"
+          ? 0
+          : 50
+    const customersPct =
+      state.customers.total_pages && state.customers.total_pages > 0
+        ? Math.min(state.customers.current_page / state.customers.total_pages, 1) * 50
+        : state.status === "completed"
+          ? 50
+          : 0
+    progressPct = Math.round(ordersPct + customersPct)
+  }
+
+  return (
+    <Card className="border-slate-800 bg-slate-900">
+      <CardHeader>
+        <CardTitle className="text-white">Sincronização inicial</CardTitle>
+        <CardDescription>
+          Importa pedidos e clientes existentes pela REST API. Depois do
+          primeiro sync, o webhook mantém tudo atualizado em tempo real.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Carregando...
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <div className="flex items-center gap-2">
+                <SyncStatusBadge status={state?.status ?? "idle"} />
+                {state?.completed_at && (
+                  <span className="text-xs text-slate-500">
+                    Última: {new Date(state.completed_at).toLocaleString("pt-BR")}
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {running || state?.status === "running" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelSync}
+                    className="border-slate-700 bg-slate-800"
+                  >
+                    <StopCircle className="mr-2 h-4 w-4" />
+                    Cancelar
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={startSync}
+                    disabled={!canSync}
+                    className="bg-primary text-white"
+                    title={
+                      canSync
+                        ? "Iniciar sincronização"
+                        : "Conecte a loja com credenciais REST antes de sincronizar"
+                    }
+                  >
+                    <DownloadCloud className="mr-2 h-4 w-4" />
+                    Sincronizar agora
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {(state?.status === "running" || running) && (
+              <div className="space-y-1">
+                <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-slate-500">
+                  <span>
+                    {state?.phase === "orders" ? "Pedidos" : "Clientes"} ·{" "}
+                    {totalSynced} importados
+                  </span>
+                  <span>{progressPct}%</span>
+                </div>
+              </div>
+            )}
+
+            {state?.status === "completed" && (
+              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">
+                {state.orders.synced_count} pedidos ·{" "}
+                {state.customers.synced_count} clientes sincronizados
+              </div>
+            )}
+
+            {state?.status === "error" && state.error && (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
+                {state.error}
+              </div>
+            )}
+
+            {!canSync && (
+              <p className="text-xs text-slate-500">
+                Ative a integração e preencha Consumer Key + Secret antes de
+                sincronizar.
+              </p>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function SyncStatusBadge({ status }: { status: SyncStateView["status"] }) {
+  const styles: Record<SyncStateView["status"], string> = {
+    idle: "bg-slate-700 text-slate-300",
+    running: "bg-blue-500/20 text-blue-300",
+    completed: "bg-emerald-500/20 text-emerald-300",
+    error: "bg-rose-500/20 text-rose-300",
+  }
+  const labels: Record<SyncStateView["status"], string> = {
+    idle: "Pronto",
+    running: "Sincronizando",
+    completed: "Concluído",
+    error: "Erro",
+  }
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${styles[status]}`}>
+      {labels[status]}
+    </span>
   )
 }

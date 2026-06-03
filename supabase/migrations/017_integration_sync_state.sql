@@ -1,0 +1,33 @@
+-- ============================================================
+-- Migration 017: Per-integration sync state
+-- ============================================================
+-- Tracks progress of one-time/manual REST API backfills. The webhook
+-- handles deltas after the initial sync — `sync_state` is purely about
+-- catching up historical data when a store first connects (or when an
+-- operator clicks "sync again").
+--
+-- Shape (JSONB):
+--   {
+--     "status": "idle" | "running" | "error" | "completed",
+--     "phase": "orders" | "customers",
+--     "started_at": ISO8601,
+--     "completed_at": ISO8601 | null,
+--     "orders": {
+--       "current_page": number,
+--       "total_pages": number | null,
+--       "synced_count": number
+--     },
+--     "customers": {
+--       "current_page": number,
+--       "total_pages": number | null,
+--       "synced_count": number
+--     },
+--     "error": string | null
+--   }
+--
+-- A simple JSONB column lets us evolve the shape per platform later
+-- without another migration.
+-- ============================================================
+
+ALTER TABLE integration_configs
+  ADD COLUMN IF NOT EXISTS sync_state JSONB NOT NULL DEFAULT '{}'::jsonb;
