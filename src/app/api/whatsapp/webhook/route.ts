@@ -6,6 +6,7 @@ import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
+import { maybeAutoReply } from '@/lib/ai/auto-reply'
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -703,6 +704,34 @@ async function processMessage(
   for (const result of automationResults) {
     if (result.status === 'rejected') {
       console.error('[automations] dispatch failed:', result.reason)
+    }
+  }
+
+  // ============================================================
+  // AI auto-reply (Phase 5)
+  //
+  // Only runs when a Flow did NOT consume the message — otherwise the
+  // flow's own send_message nodes would collide with the AI's reply.
+  // The function is internally a no-op when the agent is disabled,
+  // auto-reply is off, KB is empty, confidence < threshold, or the
+  // daily cap is hit; it logs the reason to ai_auto_reply_log either
+  // way so operators can answer "why didn't the bot reply?" later.
+  //
+  // Awaited (not fire-and-forget) for the same Lambda-freeze reason
+  // automations are awaited above. The function has its own
+  // try/catch and never throws past the boundary.
+  // ============================================================
+  if (!flowConsumed && inboundText.trim()) {
+    try {
+      await maybeAutoReply({
+        db: supabaseAdmin(),
+        userId,
+        contactId: contactRecord.id,
+        conversationId: conversation.id,
+        messageText: inboundText,
+      })
+    } catch (err) {
+      console.error('[ai-auto-reply] dispatch failed:', err)
     }
   }
 }
