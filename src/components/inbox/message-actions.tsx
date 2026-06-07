@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { CornerUpLeft, Copy, SmilePlus } from "lucide-react";
+import { CornerUpLeft, Copy, GraduationCap, SmilePlus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { Message } from "@/types";
+import { useTranslation } from "@/hooks/use-translation";
 
 // WhatsApp's own quick-reaction bar starts with these six. Picking the same
 // set keeps the affordance familiar without pulling in a 300KB emoji library.
@@ -19,6 +20,13 @@ interface MessageActionsProps {
   message: Message;
   onReply: () => void;
   onReact: (emoji: string) => void;
+  /**
+   * Optional — when supplied AND the message is from an agent, shows
+   * the "Teach AI" button. The parent walks back through the thread
+   * to find the customer question this reply was for and triggers
+   * extraction. Not provided ⇒ button hidden.
+   */
+  onTeach?: () => void | Promise<void>;
   children: ReactNode;
 }
 
@@ -31,13 +39,16 @@ export function MessageActions({
   message,
   onReply,
   onReact,
+  onTeach,
   children,
 }: MessageActionsProps) {
+  const { t } = useTranslation();
   // Touch devices have no hover. Long-press fires `contextmenu`; we capture
   // it, suppress the native menu, and pin the toolbar open until the user
   // interacts elsewhere.
   const [touchOpen, setTouchOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [teaching, setTeaching] = useState(false);
 
   const isAgent =
     message.sender_type === "agent" || message.sender_type === "bot";
@@ -71,6 +82,17 @@ export function MessageActions({
   const handleReply = () => {
     onReply();
     setTouchOpen(false);
+  };
+
+  const handleTeach = async () => {
+    if (!onTeach || teaching) return;
+    setTeaching(true);
+    try {
+      await onTeach();
+    } finally {
+      setTeaching(false);
+      setTouchOpen(false);
+    }
   };
 
   // Row alignment lives here (not in MessageBubble) so the `group/actions`
@@ -136,6 +158,18 @@ export function MessageActions({
         >
           <Copy className="h-3.5 w-3.5" />
         </button>
+        {isAgent && onTeach && (
+          <button
+            type="button"
+            onClick={handleTeach}
+            disabled={teaching}
+            className="flex h-5 w-5 items-center justify-center rounded-full text-violet-300 hover:bg-violet-500/20 hover:text-violet-200 disabled:opacity-40"
+            aria-label={t("inbox.aiLearn.tooltip")}
+            title={t("inbox.aiLearn.tooltip")}
+          >
+            <GraduationCap className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
       </div>
     </div>

@@ -924,6 +924,80 @@ export function MessageThread({
                       const next = own?.emoji === emoji ? "" : emoji;
                       void postReaction(msg.id, next);
                     };
+                    const handleTeach =
+                      msg.sender_type === "agent" || msg.sender_type === "bot"
+                        ? async () => {
+                            // Find the most recent customer message BEFORE this
+                            // agent reply, scanning backwards from the reply
+                            // index. We capture the index by id rather than
+                            // by position because realtime updates can
+                            // splice rows in.
+                            const idx = messages.findIndex(
+                              (m) => m.id === msg.id,
+                            );
+                            if (idx < 0) return;
+                            let q: string | null = null;
+                            for (let i = idx - 1; i >= 0; i--) {
+                              const candidate = messages[i];
+                              if (
+                                candidate.sender_type === "customer" &&
+                                candidate.content_text?.trim()
+                              ) {
+                                q = candidate.content_text;
+                                break;
+                              }
+                            }
+                            if (!q) {
+                              toast.error(t("inbox.aiLearn.noCustomerMsg"));
+                              return;
+                            }
+                            const answer = msg.content_text?.trim();
+                            if (!answer) {
+                              toast.error(t("inbox.aiLearn.noAgentText"));
+                              return;
+                            }
+                            try {
+                              const resp = await fetch(
+                                "/api/ai/learning-queue/extract",
+                                {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({
+                                    customer_question: q,
+                                    human_reply: answer,
+                                    contact_id: contact?.id ?? null,
+                                  }),
+                                },
+                              );
+                              const data = await resp.json();
+                              if (resp.status === 409) {
+                                toast.error(
+                                  t("inbox.aiLearn.notConfigured"),
+                                );
+                                return;
+                              }
+                              if (!resp.ok) {
+                                toast.error(
+                                  data.error ?? t("common.error"),
+                                );
+                                return;
+                              }
+                              if (data.enqueued) {
+                                toast.success(t("inbox.aiLearn.enqueued"));
+                              } else {
+                                toast.info(t("inbox.aiLearn.skipped"));
+                              }
+                            } catch (e) {
+                              toast.error(
+                                e instanceof Error
+                                  ? e.message
+                                  : t("common.error"),
+                              );
+                            }
+                          }
+                        : undefined;
                     return (
                       <MessageActions
                         key={msg.id}
@@ -932,6 +1006,7 @@ export function MessageThread({
                         onReact={(emoji) => {
                           if (emoji) void postReaction(msg.id, emoji);
                         }}
+                        onTeach={handleTeach}
                       >
                         <MessageBubble
                           message={msg}
