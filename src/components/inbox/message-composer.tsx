@@ -5,6 +5,7 @@ import { Send, LayoutTemplate } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ReplyQuote } from "./reply-quote";
+import { AiSuggestButton } from "./ai-suggest-button";
 import { useTranslation } from "@/hooks/use-translation";
 
 interface ReplyDraft {
@@ -21,6 +22,13 @@ interface MessageComposerProps {
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
+  /**
+   * Last inbound customer message, plain text. Feeds the AI suggest
+   * button. `null` disables the button (e.g. brand-new conversation).
+   */
+  lastInboundText?: string | null;
+  /** Used by the AI suggest run log to attribute the suggestion. */
+  contactId?: string | null;
 }
 
 export function MessageComposer({
@@ -30,6 +38,8 @@ export function MessageComposer({
   onOpenTemplates,
   replyTo,
   onClearReply,
+  lastInboundText,
+  contactId,
 }: MessageComposerProps) {
   const { t } = useTranslation();
   const [text, setText] = useState("");
@@ -116,6 +126,26 @@ export function MessageComposer({
         >
           <LayoutTemplate className="h-4 w-4" />
         </Button>
+
+        <AiSuggestButton
+          lastInboundText={lastInboundText ?? null}
+          contactId={contactId ?? null}
+          disabled={sessionExpired}
+          onAccept={(suggestion) => {
+            setText(suggestion);
+            // Run height adjust after state flushes so the textarea
+            // grows to fit the suggestion.
+            requestAnimationFrame(adjustHeight);
+            textareaRef.current?.focus();
+          }}
+          onAppend={(suggestion) => {
+            setText((prev) =>
+              prev ? `${prev}\n${suggestion}` : suggestion
+            );
+            requestAnimationFrame(adjustHeight);
+            textareaRef.current?.focus();
+          }}
+        />
 
         <textarea
           ref={textareaRef}

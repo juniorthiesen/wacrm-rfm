@@ -202,6 +202,19 @@ export function MessageThread({
     };
   }, []);
 
+  // Last inbound customer message — fed to the AI suggest copilot.
+  // Memoised alongside sessionInfo because both derive from the same
+  // reversed-scan over messages and we don't want to compute twice.
+  const lastInboundText = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.sender_type === "customer" && m.content_text?.trim()) {
+        return m.content_text;
+      }
+    }
+    return null;
+  }, [messages]);
+
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
     if (!messages.length) return { expired: false, remaining: "" };
@@ -945,6 +958,8 @@ export function MessageThread({
         onOpenTemplates={handleOpenTemplates}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
+        lastInboundText={lastInboundText}
+        contactId={contact?.id ?? null}
       />
 
       <TemplatePicker
