@@ -619,6 +619,26 @@ async function processMessage(
   // trigger installed in migration 003).
   await flagBroadcastReplyIfAny(userId, contactRecord.id)
 
+  // Open / refresh the 24h Meta service window. ANY inbound resets
+  // the clock: free-form text, media, location, swipe-reply, AND
+  // template / interactive button taps (which Meta treats as
+  // customer-initiated messages). Reactions are skipped earlier in
+  // this function so they don't reach here — matching Meta's rule
+  // that reactions alone don't open the window.
+  //
+  // Why best-effort: a failure to update this column must not break
+  // message ingestion. The window will simply not be available for
+  // the smart sender on this message, and the next inbound will
+  // re-open it.
+  const windowUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+  const { error: windowErr } = await supabaseAdmin()
+    .from('contacts')
+    .update({ conversation_window_until: windowUntil })
+    .eq('id', contactRecord.id)
+  if (windowErr) {
+    console.error('[webhook] failed to update conversation_window_until:', windowErr.message)
+  }
+
   // ============================================================
   // Flow runner dispatch.
   //

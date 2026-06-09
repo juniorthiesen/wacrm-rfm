@@ -10,6 +10,7 @@ export type TemplateSlug =
   | 'out_of_office'
   | 'lead_qualifier'
   | 'follow_up_reminder'
+  | 'promo_offer_follow_up'
 
 export interface TemplateStepSeed {
   step_type: AutomationStepType
@@ -121,6 +122,52 @@ export const AUTOMATION_TEMPLATES: Record<TemplateSlug, AutomationTemplateDefini
         step_config: {
           text:
             "Just circling back — did you have any other questions for us? Happy to help!",
+        },
+      },
+    ],
+  },
+  // ─────────────────────────────────────────────────────────────
+  // Promo offer follow-up — the cost-strategy starter.
+  // See docs/whatsapp-cost-strategy.md for the full pattern.
+  //
+  // Pairs with a UTILITY template that has a Quick Reply button
+  // labeled "Ver minha seleção" (or similar). When the contact
+  // taps the button, Meta delivers the tap as an inbound message
+  // (button title becomes message_text), which opens the 24h
+  // service window. This automation matches the button title and
+  // immediately sends the actual promo pitch via free-form —
+  // grátis instead of paying for a Marketing template.
+  //
+  // Customize: replace the keyword list with the QR titles of
+  // YOUR utility-abridor template, and rewrite the send_message
+  // body with your real offer copy.
+  // ─────────────────────────────────────────────────────────────
+  promo_offer_follow_up: {
+    slug: 'promo_offer_follow_up',
+    name: 'Promo follow-up (free in-window)',
+    description:
+      'Send the actual promo pitch via free-form when a contact taps the Quick Reply on your Utility-abridor template. Grátis instead of paid.',
+    trigger_type: 'keyword_match',
+    trigger_config: {
+      // These must match the EXACT button title text on the Utility
+      // template. Edit after creating the automation to fit your
+      // own template's Quick Reply labels.
+      keywords: [
+        'Ver minha seleção',
+        'Ver linha PLUS',
+        'Acessar agora',
+        'Sim, mandar',
+        'Finalizar pedido',
+        'Ver outras peças',
+      ],
+      match_type: 'exact',
+    },
+    steps: [
+      {
+        step_type: 'send_message',
+        step_config: {
+          text:
+            'Oi! Aqui está a campanha completa:\n\n3 peças regulares por R$ 99,99 (códigos 404, 407, 331, 423, 401).\nLinha PLUS 3 por R$ 199,90 (códigos 900, 901, 909).\n\nQuer que eu te mande os mais procurados esta semana?',
         },
       },
     ],
