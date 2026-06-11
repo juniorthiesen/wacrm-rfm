@@ -11,8 +11,8 @@
 --   and configure the corresponding active CRM automations with
 --   the template variables matching the customer's purchase details.
 --
--- Idempotent: re-running will update the templates and recreate the
--- automations to prevent duplicates.
+-- Idempotent: re-running will update the templates, clear any
+-- previous rejection reason, and recreate the automations.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION seed_woo_order_notifications(p_user_id UUID)
@@ -44,7 +44,8 @@ BEGIN
   DO UPDATE SET
     body_text = EXCLUDED.body_text,
     category = EXCLUDED.category,
-    status = 'Draft'; -- Reset to Draft so they can submit to Meta
+    status = 'Draft',
+    rejection_reason = NULL; -- Reset to Draft and clear errors so they can be resubmitted
 
   item_name := 'woo_order_received'; item_type := 'Template'; action := 'seeded (Draft)'; RETURN NEXT;
 
@@ -64,7 +65,8 @@ BEGIN
   DO UPDATE SET
     body_text = EXCLUDED.body_text,
     category = EXCLUDED.category,
-    status = 'Draft';
+    status = 'Draft',
+    rejection_reason = NULL;
 
   item_name := 'woo_order_paid'; item_type := 'Template'; action := 'seeded (Draft)'; RETURN NEXT;
 
@@ -84,7 +86,8 @@ BEGIN
   DO UPDATE SET
     body_text = EXCLUDED.body_text,
     category = EXCLUDED.category,
-    status = 'Draft';
+    status = 'Draft',
+    rejection_reason = NULL;
 
   item_name := 'woo_order_in_separation'; item_type := 'Template'; action := 'seeded (Draft)'; RETURN NEXT;
 
@@ -104,7 +107,8 @@ BEGIN
   DO UPDATE SET
     body_text = EXCLUDED.body_text,
     category = EXCLUDED.category,
-    status = 'Draft';
+    status = 'Draft',
+    rejection_reason = NULL;
 
   item_name := 'woo_order_shipped'; item_type := 'Template'; action := 'seeded (Draft)'; RETURN NEXT;
 
