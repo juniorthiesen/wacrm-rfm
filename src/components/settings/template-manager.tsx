@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trash2, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Loader2, RefreshCw, Send } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useTranslation } from '@/hooks/use-translation';
@@ -102,6 +102,7 @@ export function TemplateManager() {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [form, setForm] = useState<TemplateFormData>(emptyForm);
+  const [submittingIds, setSubmittingIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (authLoading) return;
@@ -228,6 +229,28 @@ export function TemplateManager() {
     }
   }
 
+  async function handleSubmitToMeta(id: string) {
+    setSubmittingIds((prev) => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch('/api/whatsapp/templates/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_id: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to submit template');
+      }
+      toast.success(t('settings.templates.successSubmit'));
+      if (user) await fetchTemplates(user.id);
+    } catch (err) {
+      console.error('Submit error:', err);
+      toast.error(err instanceof Error ? err.message : t('settings.templates.errorSubmit'));
+    } finally {
+      setSubmittingIds((prev) => ({ ...prev, [id]: false }));
+    }
+  }
+
   async function handleDelete(id: string) {
     try {
       const { error } = await supabase
@@ -325,14 +348,34 @@ export function TemplateManager() {
                     <p className="text-xs text-slate-500 italic">{template.footer_text}</p>
                   )}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDelete(template.id)}
-                  className="text-slate-400 hover:text-red-400 hover:bg-red-950/30 shrink-0 ml-2"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  {(template.status === 'Draft' || !template.status) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSubmitToMeta(template.id)}
+                      disabled={submittingIds[template.id]}
+                      className="border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white"
+                    >
+                      {submittingIds[template.id] ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Send className="size-3.5 mr-1" />
+                      )}
+                      {submittingIds[template.id]
+                        ? t('settings.templates.submitting')
+                        : t('settings.templates.submitToMeta')}
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDelete(template.id)}
+                    className="text-slate-400 hover:text-red-400 hover:bg-red-950/30"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
