@@ -164,10 +164,10 @@ export async function POST(request: Request) {
       )
     }
 
-    if (template.status !== 'Draft') {
+    if (template.status !== 'Draft' && template.status !== 'Rejected') {
       return NextResponse.json(
         {
-          error: `Template is in ${template.status} status. Only Draft templates can be submitted. Duplicate it as a fresh Draft if you need to resubmit.`,
+          error: `Template is in ${template.status} status. Only Draft or Rejected templates can be submitted.`,
         },
         { status: 409 },
       )

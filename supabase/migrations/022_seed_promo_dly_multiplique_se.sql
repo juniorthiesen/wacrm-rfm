@@ -20,9 +20,12 @@
 --     UTILITY content already.
 --   - T6 (última chance) stays MARKETING — urgency factual
 --     content can't pass Meta as Utility.
+--   - Variable Prefix Fix: Meta forbids templates from starting
+--     with a variable. T4 and T6 have been updated to start with
+--     greeting text ("Olá, {{1}}!") instead of the raw variable "{{1}}".
 --
--- The function is idempotent: re-running won't duplicate rows
--- (uses ON CONFLICT DO NOTHING on the unique-per-user lookup).
+-- The function is idempotent: re-running will update templates
+-- and reset their status to Draft to allow resubmission.
 -- ============================================================
 
 -- Make (user_id, name, language) unique so the ON CONFLICT clause
@@ -33,8 +36,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_message_templates_user_name_lang
 
 CREATE OR REPLACE FUNCTION seed_promo_dly_multiplique_se(p_user_id UUID)
 RETURNS TABLE(template_name TEXT, action TEXT) AS $$
-DECLARE
-  v_inserted_count INT := 0;
 BEGIN
   IF p_user_id IS NULL THEN
     RAISE EXCEPTION 'p_user_id is required';
@@ -61,13 +62,18 @@ BEGIN
       {"type":"QUICK_REPLY","text":"Quero ajuda do tamanho"}
     ]'::jsonb,
     'Draft'
-  ) ON CONFLICT (user_id, name, language) DO NOTHING;
-  IF FOUND THEN
-    v_inserted_count := v_inserted_count + 1;
-    template_name := 'promo_multiplique_lancamento_regular'; action := 'inserted'; RETURN NEXT;
-  ELSE
-    template_name := 'promo_multiplique_lancamento_regular'; action := 'skipped (already exists)'; RETURN NEXT;
-  END IF;
+  ) ON CONFLICT (user_id, name, language) DO UPDATE SET
+    category = EXCLUDED.category,
+    header_type = EXCLUDED.header_type,
+    header_content = EXCLUDED.header_content,
+    body_text = EXCLUDED.body_text,
+    body_example = EXCLUDED.body_example,
+    footer_text = EXCLUDED.footer_text,
+    buttons = EXCLUDED.buttons,
+    status = 'Draft',
+    rejection_reason = NULL;
+  
+  template_name := 'promo_multiplique_lancamento_regular'; action := 'seeded'; RETURN NEXT;
 
   -- T2 — Lançamento PLUS (UTILITY-abridor)
   INSERT INTO message_templates (
@@ -89,15 +95,20 @@ BEGIN
       {"type":"QUICK_REPLY","text":"Quero ajuda do tamanho"}
     ]'::jsonb,
     'Draft'
-  ) ON CONFLICT (user_id, name, language) DO NOTHING;
-  IF FOUND THEN
-    template_name := 'promo_multiplique_lancamento_plus'; action := 'inserted'; RETURN NEXT;
-  ELSE
-    template_name := 'promo_multiplique_lancamento_plus'; action := 'skipped (already exists)'; RETURN NEXT;
-  END IF;
+  ) ON CONFLICT (user_id, name, language) DO UPDATE SET
+    category = EXCLUDED.category,
+    header_type = EXCLUDED.header_type,
+    header_content = EXCLUDED.header_content,
+    body_text = EXCLUDED.body_text,
+    body_example = EXCLUDED.body_example,
+    footer_text = EXCLUDED.footer_text,
+    buttons = EXCLUDED.buttons,
+    status = 'Draft',
+    rejection_reason = NULL;
+  
+  template_name := 'promo_multiplique_lancamento_plus'; action := 'seeded'; RETURN NEXT;
 
   -- T3 — Acesso antecipado VIP (UTILITY-abridor)
-  -- "Cliente preferencial" enquadra como atualização de status legítima.
   INSERT INTO message_templates (
     user_id, name, category, language,
     body_text, body_example, footer_text, buttons, status
@@ -113,15 +124,19 @@ BEGIN
       {"type":"QUICK_REPLY","text":"Acessar agora"}
     ]'::jsonb,
     'Draft'
-  ) ON CONFLICT (user_id, name, language) DO NOTHING;
-  IF FOUND THEN
-    template_name := 'promo_multiplique_acesso_antecipado'; action := 'inserted'; RETURN NEXT;
-  ELSE
-    template_name := 'promo_multiplique_acesso_antecipado'; action := 'skipped (already exists)'; RETURN NEXT;
-  END IF;
+  ) ON CONFLICT (user_id, name, language) DO UPDATE SET
+    category = EXCLUDED.category,
+    body_text = EXCLUDED.body_text,
+    body_example = EXCLUDED.body_example,
+    footer_text = EXCLUDED.footer_text,
+    buttons = EXCLUDED.buttons,
+    status = 'Draft',
+    rejection_reason = NULL;
+  
+  template_name := 'promo_multiplique_acesso_antecipado'; action := 'seeded'; RETURN NEXT;
 
   -- T4 — Reforço meio campanha (UTILITY-abridor)
-  -- "Sua seleção foi atualizada" — atualização de status do interesse
+  -- Fixed: starts with "Oi, {{1}}!" instead of raw "{{1}}" to prevent Meta rejection.
   INSERT INTO message_templates (
     user_id, name, category, language,
     body_text, body_example, footer_text, buttons, status
@@ -130,7 +145,7 @@ BEGIN
     'promo_multiplique_reforco_meio',
     'Utility',
     'pt_BR',
-    '{{1}}, atualização da sua seleção DLY: faltam {{2}} dias da janela aberta. Posso te enviar os 3 modelos mais buscados desta semana?',
+    'Oi, {{1}}! Uma atualização da sua seleção DLY: faltam {{2}} dias da janela aberta. Posso te enviar os 3 modelos mais buscados desta semana?',
     '{"body_text": [["Mariana", "7"]]}'::jsonb,
     'DLY · responda SAIR para descadastrar',
     '[
@@ -138,15 +153,18 @@ BEGIN
       {"type":"QUICK_REPLY","text":"Tirar dúvida"}
     ]'::jsonb,
     'Draft'
-  ) ON CONFLICT (user_id, name, language) DO NOTHING;
-  IF FOUND THEN
-    template_name := 'promo_multiplique_reforco_meio'; action := 'inserted'; RETURN NEXT;
-  ELSE
-    template_name := 'promo_multiplique_reforco_meio'; action := 'skipped (already exists)'; RETURN NEXT;
-  END IF;
+  ) ON CONFLICT (user_id, name, language) DO UPDATE SET
+    category = EXCLUDED.category,
+    body_text = EXCLUDED.body_text,
+    body_example = EXCLUDED.body_example,
+    footer_text = EXCLUDED.footer_text,
+    buttons = EXCLUDED.buttons,
+    status = 'Draft',
+    rejection_reason = NULL;
+  
+  template_name := 'promo_multiplique_reforco_meio'; action := 'seeded'; RETURN NEXT;
 
   -- T5 — Carrinho abandonado (UTILITY legítimo)
-  -- "Status do seu carrinho" — status update genuíno
   INSERT INTO message_templates (
     user_id, name, category, language,
     body_text, body_example, footer_text, buttons, status
@@ -163,17 +181,19 @@ BEGIN
       {"type":"QUICK_REPLY","text":"Tirar dúvida"}
     ]'::jsonb,
     'Draft'
-  ) ON CONFLICT (user_id, name, language) DO NOTHING;
-  IF FOUND THEN
-    template_name := 'promo_multiplique_carrinho_abandonado'; action := 'inserted'; RETURN NEXT;
-  ELSE
-    template_name := 'promo_multiplique_carrinho_abandonado'; action := 'skipped (already exists)'; RETURN NEXT;
-  END IF;
+  ) ON CONFLICT (user_id, name, language) DO UPDATE SET
+    category = EXCLUDED.category,
+    body_text = EXCLUDED.body_text,
+    body_example = EXCLUDED.body_example,
+    footer_text = EXCLUDED.footer_text,
+    buttons = EXCLUDED.buttons,
+    status = 'Draft',
+    rejection_reason = NULL;
+  
+  template_name := 'promo_multiplique_carrinho_abandonado'; action := 'seeded'; RETURN NEXT;
 
   -- T6 — Última chance (mantém MARKETING)
-  -- Urgência factual de fim de campanha não passa como Utility.
-  -- Disparar SÓ pra quem não abriu janela nos 14 dias anteriores;
-  -- quem tem janela aberta recebe free-form (grátis).
+  -- Fixed: starts with "Olá, {{1}}!" instead of raw "{{1}}" to prevent Meta rejection.
   INSERT INTO message_templates (
     user_id, name, category, language,
     body_text, body_example, footer_text, buttons, status
@@ -182,19 +202,23 @@ BEGIN
     'promo_multiplique_ultima_chance',
     'Marketing',
     'pt_BR',
-    '{{1}}, é hoje. A campanha "Multiplique-se" da DLY acaba {{2}}. Amanhã volta o preço cheio — sem prorrogação. Códigos regulares: 404, 407, 331, 423, 401. PLUS: 900, 901, 909.',
+    'Olá, {{1}}! É hoje. A campanha "Multiplique-se" da DLY acaba {{2}}. Amanhã volta o preço cheio — sem prorrogação. Códigos regulares: 404, 407, 331, 423, 401. PLUS: 900, 901, 909.',
     '{"body_text": [["Mariana", "à meia-noite"]]}'::jsonb,
     'DLY · responda SAIR para descadastrar',
     '[
       {"type":"URL","text":"Garantir agora","url":"https://dly.com.br/promo/multiplique?utm_source=whatsapp&utm_medium=broadcast&utm_campaign=promo_dly_jun26_regular&utm_content=t6_ultima_chance"}
     ]'::jsonb,
     'Draft'
-  ) ON CONFLICT (user_id, name, language) DO NOTHING;
-  IF FOUND THEN
-    template_name := 'promo_multiplique_ultima_chance'; action := 'inserted'; RETURN NEXT;
-  ELSE
-    template_name := 'promo_multiplique_ultima_chance'; action := 'skipped (already exists)'; RETURN NEXT;
-  END IF;
+  ) ON CONFLICT (user_id, name, language) DO UPDATE SET
+    category = EXCLUDED.category,
+    body_text = EXCLUDED.body_text,
+    body_example = EXCLUDED.body_example,
+    footer_text = EXCLUDED.footer_text,
+    buttons = EXCLUDED.buttons,
+    status = 'Draft',
+    rejection_reason = NULL;
+  
+  template_name := 'promo_multiplique_ultima_chance'; action := 'seeded'; RETURN NEXT;
 
   -- T7 — Pós-compra (UTILITY + QR pra abrir janela pro cross-sell)
   INSERT INTO message_templates (
@@ -213,16 +237,20 @@ BEGIN
       {"type":"QUICK_REPLY","text":"Ver outras peças"}
     ]'::jsonb,
     'Draft'
-  ) ON CONFLICT (user_id, name, language) DO NOTHING;
-  IF FOUND THEN
-    template_name := 'promo_multiplique_pos_compra_cross'; action := 'inserted'; RETURN NEXT;
-  ELSE
-    template_name := 'promo_multiplique_pos_compra_cross'; action := 'skipped (already exists)'; RETURN NEXT;
-  END IF;
+  ) ON CONFLICT (user_id, name, language) DO UPDATE SET
+    category = EXCLUDED.category,
+    body_text = EXCLUDED.body_text,
+    body_example = EXCLUDED.body_example,
+    footer_text = EXCLUDED.footer_text,
+    buttons = EXCLUDED.buttons,
+    status = 'Draft',
+    rejection_reason = NULL;
+  
+  template_name := 'promo_multiplique_pos_compra_cross'; action := 'seeded'; RETURN NEXT;
 
   RETURN;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 COMMENT ON FUNCTION seed_promo_dly_multiplique_se(UUID) IS
-  'Seeds the 7 DLY Multiplique-se templates as Draft rows for the given user. Idempotent — re-runs are no-ops for already-existing rows. After seeding, submit each via POST /api/whatsapp/templates/submit.';
+  'Seeds the 7 DLY Multiplique-se templates as Draft rows for the given user, resetting their status to Draft on execution.';
