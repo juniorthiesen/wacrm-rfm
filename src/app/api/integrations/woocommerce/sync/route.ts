@@ -102,6 +102,12 @@ export async function POST() {
   const { config, error: loadError } = await loadConfig(user.id);
   if (loadError) return NextResponse.json({ error: loadError }, { status: 500 });
   if (!config) {
+    // Logged so a "Not connected" with the store visibly connected can
+    // be traced — usually the logged-in session differs from the user
+    // that owns the integration_configs row.
+    console.warn(
+      `[sync-wc] no woocommerce integration row for logged-in user ${user.id}`,
+    );
     return NextResponse.json({ error: "Not connected" }, { status: 404 });
   }
   if (
