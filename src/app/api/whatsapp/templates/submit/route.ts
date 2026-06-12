@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
+import {
+  isNameConflictError,
+  suggestNextName,
+} from '@/lib/whatsapp/template-name'
 
 /**
  * Submit a local Draft template to Meta for approval.
@@ -119,7 +123,11 @@ interface MetaSubmitResponse {
   id?: string
   status?: 'APPROVED' | 'PENDING' | 'REJECTED' | string
   category?: string
-  error?: { message?: string; error_user_msg?: string }
+  error?: {
+    message?: string
+    error_user_title?: string
+    error_user_msg?: string
+  }
 }
 
 export async function POST(request: Request) {
@@ -216,6 +224,27 @@ export async function POST(request: Request) {
         data.error?.error_user_msg ||
         data.error?.message ||
         `Meta API error: ${res.status}`
+
+      // Name conflict: a same-name template is still being deleted on
+      // Meta's side (or the name is locked — deleted Approved names
+      // stay reserved for 30 days). Not a content rejection, so leave
+      // the local status untouched and hand the UI what it needs to
+      // offer "retry" or "rename to _vN and resubmit".
+      if (isNameConflictError(data.error)) {
+        const { data: rows } = await supabase
+          .from('message_templates')
+          .select('name')
+          .eq('user_id', user.id)
+        const suggested = suggestNextName(
+          template.name,
+          (rows ?? []).map((r: { name: string }) => r.name),
+        )
+        return NextResponse.json(
+          { error: reason, reason: 'name_conflict', suggested_name: suggested },
+          { status: 409 },
+        )
+      }
+
       await supabase
         .from('message_templates')
         .update({

@@ -103,6 +103,15 @@ export function TemplateManager() {
   const [syncing, setSyncing] = useState(false);
   const [form, setForm] = useState<TemplateFormData>(emptyForm);
   const [submittingIds, setSubmittingIds] = useState<Record<string, boolean>>({});
+  // Set when Meta refuses a submission because the template name is
+  // still being deleted (transient) or locked for 30 days (the deleted
+  // template had been approved). Drives the retry-or-rename dialog.
+  const [nameConflict, setNameConflict] = useState<{
+    templateId: string;
+    templateName: string;
+    suggestedName: string;
+  } | null>(null);
+  const [renaming, setRenaming] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -238,6 +247,15 @@ export function TemplateManager() {
         body: JSON.stringify({ template_id: id }),
       });
       const data = await res.json();
+      if (res.status === 409 && data?.reason === 'name_conflict') {
+        const tpl = templates.find((candidate) => candidate.id === id);
+        setNameConflict({
+          templateId: id,
+          templateName: tpl?.name ?? '',
+          suggestedName: data.suggested_name,
+        });
+        return;
+      }
       if (!res.ok) {
         throw new Error(data?.error || 'Failed to submit template');
       }
@@ -248,6 +266,49 @@ export function TemplateManager() {
       toast.error(err instanceof Error ? err.message : t('settings.templates.errorSubmit'));
     } finally {
       setSubmittingIds((prev) => ({ ...prev, [id]: false }));
+    }
+  }
+
+  function handleConflictRetry() {
+    if (!nameConflict) return;
+    const id = nameConflict.templateId;
+    setNameConflict(null);
+    void handleSubmitToMeta(id);
+  }
+
+  /**
+   * Rename the conflicting template to the suggested `_vN` name (the
+   * server cascades the rename into every automation step that uses
+   * it) and immediately resubmit under the new name. If Meta still
+   * refuses, the conflict dialog reopens with the next suffix.
+   */
+  async function handleConflictRename() {
+    if (!nameConflict) return;
+    const { templateId, suggestedName } = nameConflict;
+    setRenaming(true);
+    try {
+      const res = await fetch('/api/whatsapp/templates/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_id: templateId, new_name: suggestedName }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || t('settings.templates.errorRename'));
+      }
+      toast.success(
+        t('settings.templates.successRename')
+          .replace('{name}', data.new_name ?? suggestedName)
+          .replace('{count}', String(data.automations_updated ?? 0)),
+      );
+      setNameConflict(null);
+      if (user) await fetchTemplates(user.id);
+      await handleSubmitToMeta(templateId);
+    } catch (err) {
+      console.error('Rename error:', err);
+      toast.error(err instanceof Error ? err.message : t('settings.templates.errorRename'));
+    } finally {
+      setRenaming(false);
     }
   }
 
@@ -349,7 +410,10 @@ export function TemplateManager() {
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-2">
-                  {(template.status === 'Draft' || !template.status) && (
+                  {/* Rejected included on purpose: the submit endpoint
+                      accepts Draft or Rejected, so a fixed-up rejected
+                      template can be resubmitted without recreating it. */}
+                  {(template.status === 'Draft' || template.status === 'Rejected' || !template.status) && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -509,6 +573,63 @@ export function TemplateManager() {
                 </>
               ) : (
                 t('settings.templates.createButton')
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Name-conflict dialog: Meta refused the submission because a
+          same-name template is still being deleted (resolves in ~1 min)
+          or the name is locked for 30 days (it was approved before
+          deletion). The app can't tell the cases apart from the error
+          payload, so the operator picks: wait-and-retry, or rename to
+          the next free _vN suffix and resubmit. */}
+      <Dialog
+        open={nameConflict !== null}
+        onOpenChange={(open) => {
+          if (!open) setNameConflict(null);
+        }}
+      >
+        <DialogContent className="bg-slate-900 border-slate-700 sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              {t('settings.templates.conflictTitle')}
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {t('settings.templates.conflictDesc').replace(
+                '{name}',
+                nameConflict?.templateName ?? '',
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-slate-400">
+            {t('settings.templates.conflictHint')}
+          </p>
+          <DialogFooter className="bg-slate-900 border-slate-700">
+            <Button
+              variant="outline"
+              onClick={handleConflictRetry}
+              disabled={renaming}
+              className="border-slate-700 text-slate-300 hover:bg-slate-800"
+            >
+              {t('settings.templates.conflictRetry')}
+            </Button>
+            <Button
+              onClick={handleConflictRename}
+              disabled={renaming}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            >
+              {renaming ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  {t('settings.templates.renaming')}
+                </>
+              ) : (
+                t('settings.templates.conflictRename').replace(
+                  '{name}',
+                  nameConflict?.suggestedName ?? '',
+                )
               )}
             </Button>
           </DialogFooter>
