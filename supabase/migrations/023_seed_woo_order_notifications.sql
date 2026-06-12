@@ -37,7 +37,9 @@ BEGIN
     'woo_order_received',
     'Utility',
     'pt_BR',
-    E'Olá, *{{1}}*! 👋\n\nRecebemos seu pedido *#{{2}}*.\nPara confirmar, utilize o Pix Copia e Cola abaixo:\n\n{{3}}',
+    -- Meta rejects bodies that start or end with a variable, so the
+    -- PIX code needs a closing line after it.
+    E'Olá, *{{1}}*! 👋\n\nRecebemos seu pedido *#{{2}}*.\nPara confirmar, utilize o Pix Copia e Cola abaixo:\n\n{{3}}\n\nAssim que o pagamento for confirmado, te avisamos por aqui. ✅',
     'Draft'
   )
   ON CONFLICT (user_id, name, language)
@@ -100,7 +102,8 @@ BEGIN
     'woo_order_shipped',
     'Utility',
     'pt_BR',
-    E'Seu pedido *#{{1}}* foi enviado! 🚀\n\nO rastreio fica disponível após 24h do envio.\n\nCódigo de rastreio: *{{2}}*\n\nAcesse o link abaixo para rastrear:\n{{3}}',
+    -- Same bounds rule: the tracking link can't be the last token.
+    E'Seu pedido *#{{1}}* foi enviado! 🚀\n\nO rastreio fica disponível após 24h do envio.\n\nCódigo de rastreio: *{{2}}*\n\nAcesse o link abaixo para rastrear:\n{{3}}\n\nQualquer dúvida, é só responder esta mensagem. 💬',
     'Draft'
   )
   ON CONFLICT (user_id, name, language)

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trash2, Loader2, RefreshCw, Send } from 'lucide-react';
+import { Plus, Trash2, Loader2, RefreshCw, Send, Pencil } from 'lucide-react';
+import { hasVariableAtBounds } from '@/lib/whatsapp/template-name';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useTranslation } from '@/hooks/use-translation';
@@ -99,6 +100,8 @@ export function TemplateManager() {
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // Template id being edited; null means the dialog creates a new one.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [form, setForm] = useState<TemplateFormData>(emptyForm);
@@ -143,6 +146,25 @@ export function TemplateManager() {
     }
   }
 
+  function openCreateDialog() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setDialogOpen(true);
+  }
+
+  function openEditDialog(template: MessageTemplate) {
+    setEditingId(template.id);
+    setForm({
+      name: template.name,
+      category: template.category,
+      language: template.language || 'en_US',
+      body_text: template.body_text,
+      header_type: template.header_type || '',
+      footer_text: template.footer_text || '',
+    });
+    setDialogOpen(true);
+  }
+
   async function handleSave() {
     if (!form.name.trim()) {
       toast.error(t('settings.templates.errorNameRequired'));
@@ -150,6 +172,12 @@ export function TemplateManager() {
     }
     if (!form.body_text.trim()) {
       toast.error(t('settings.templates.errorBodyRequired'));
+      return;
+    }
+    // Meta rejects bodies that open or close with a variable — catch
+    // it here instead of burning a submission round-trip.
+    if (hasVariableAtBounds(form.body_text)) {
+      toast.error(t('settings.templates.errorVariableBounds'));
       return;
     }
 
@@ -160,30 +188,73 @@ export function TemplateManager() {
         return;
       }
 
-      const payload = {
-        user_id: user.id,
-        name: form.name.trim(),
-        category: form.category,
-        language: form.language.trim() || 'en_US',
-        body_text: form.body_text.trim(),
-        header_type: form.header_type || null,
-        footer_text: form.footer_text.trim() || null,
-        status: 'Draft' as const,
-      };
+      if (editingId) {
+        const original = templates.find((tpl) => tpl.id === editingId);
+        const newName = form.name.trim();
 
-      const { error } = await supabase
-        .from('message_templates')
-        .insert(payload);
+        // Name changes must go through the rename endpoint so the new
+        // name cascades into automation steps atomically (migration
+        // 024). A plain UPDATE here would orphan those references.
+        if (original && newName !== original.name) {
+          const res = await fetch('/api/whatsapp/templates/rename', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ template_id: editingId, new_name: newName }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data?.error || t('settings.templates.errorRename'));
+          }
+        }
 
-      if (error) throw error;
+        // Edited content invalidates whatever verdict Meta gave the
+        // old content — back to Draft, ready to resubmit.
+        const { error } = await supabase
+          .from('message_templates')
+          .update({
+            category: form.category,
+            language: form.language.trim() || 'en_US',
+            body_text: form.body_text.trim(),
+            header_type: form.header_type || null,
+            footer_text: form.footer_text.trim() || null,
+            status: 'Draft' as const,
+            rejection_reason: null,
+          })
+          .eq('id', editingId);
 
-      toast.success(t('settings.templates.successCreate'));
+        if (error) throw error;
+        toast.success(t('settings.templates.successUpdate'));
+      } else {
+        const payload = {
+          user_id: user.id,
+          name: form.name.trim(),
+          category: form.category,
+          language: form.language.trim() || 'en_US',
+          body_text: form.body_text.trim(),
+          header_type: form.header_type || null,
+          footer_text: form.footer_text.trim() || null,
+          status: 'Draft' as const,
+        };
+
+        const { error } = await supabase
+          .from('message_templates')
+          .insert(payload);
+
+        if (error) throw error;
+        toast.success(t('settings.templates.successCreate'));
+      }
+
       setDialogOpen(false);
+      setEditingId(null);
       setForm(emptyForm);
       if (user) await fetchTemplates(user.id);
     } catch (err) {
       console.error('Save error:', err);
-      toast.error(t('settings.templates.errorCreate'));
+      toast.error(
+        err instanceof Error && editingId
+          ? err.message
+          : t(editingId ? 'settings.templates.errorUpdate' : 'settings.templates.errorCreate'),
+      );
     } finally {
       setSaving(false);
     }
@@ -359,10 +430,7 @@ export function TemplateManager() {
             {syncing ? t('settings.templates.syncingLabel') : t('settings.templates.syncButton')}
           </Button>
           <Button
-            onClick={() => {
-              setForm(emptyForm);
-              setDialogOpen(true);
-            }}
+            onClick={openCreateDialog}
             className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             <Plus className="size-4" />
@@ -408,11 +476,27 @@ export function TemplateManager() {
                   {template.footer_text && (
                     <p className="text-xs text-slate-500 italic">{template.footer_text}</p>
                   )}
+                  {template.status === 'Rejected' && template.rejection_reason && (
+                    <p className="text-xs text-red-400">
+                      {t('settings.templates.rejectionReasonLabel')}: {template.rejection_reason}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-2">
-                  {/* Rejected included on purpose: the submit endpoint
-                      accepts Draft or Rejected, so a fixed-up rejected
-                      template can be resubmitted without recreating it. */}
+                  {/* Draft and Rejected are the only pre-submission
+                      states: both editable and both submittable (the
+                      submit endpoint accepts either). */}
+                  {(template.status === 'Draft' || template.status === 'Rejected' || !template.status) && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openEditDialog(template)}
+                      title={t('settings.templates.editButton')}
+                      className="text-slate-400 hover:text-white hover:bg-slate-800"
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
+                  )}
                   {(template.status === 'Draft' || template.status === 'Rejected' || !template.status) && (
                     <Button
                       variant="outline"
@@ -446,13 +530,21 @@ export function TemplateManager() {
         </div>
       )}
 
-      {/* New Template Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {/* Create / Edit Template Dialog */}
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setEditingId(null);
+        }}
+      >
         <DialogContent className="bg-slate-900 border-slate-700 sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-white">{t('settings.templates.dialogTitle')}</DialogTitle>
+            <DialogTitle className="text-white">
+              {t(editingId ? 'settings.templates.dialogTitleEdit' : 'settings.templates.dialogTitle')}
+            </DialogTitle>
             <DialogDescription className="text-slate-400">
-              {t('settings.templates.dialogDesc')}
+              {t(editingId ? 'settings.templates.dialogDescEdit' : 'settings.templates.dialogDesc')}
             </DialogDescription>
           </DialogHeader>
 
@@ -513,7 +605,9 @@ export function TemplateManager() {
               <Label className="text-slate-300">{t('settings.templates.headerTypeLabel')}</Label>
               <Select
                 value={form.header_type}
-                onValueChange={(val) => setForm({ ...form, header_type: val || '' })}
+                // 'none' is a sentinel SelectItem — store '' so the save
+                // path maps it to NULL (the DB CHECK only allows real types).
+                onValueChange={(val) => setForm({ ...form, header_type: !val || val === 'none' ? '' : val })}
               >
                 <SelectTrigger className="w-full bg-slate-800 border-slate-700 text-white">
                   <SelectValue placeholder={t('settings.templates.headerTypeNone')} />
@@ -569,10 +663,10 @@ export function TemplateManager() {
               {saving ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  {t('settings.templates.creating')}
+                  {t(editingId ? 'settings.templates.updating' : 'settings.templates.creating')}
                 </>
               ) : (
-                t('settings.templates.createButton')
+                t(editingId ? 'settings.templates.updateButton' : 'settings.templates.createButton')
               )}
             </Button>
           </DialogFooter>

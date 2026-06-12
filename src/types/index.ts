@@ -152,6 +152,8 @@ export interface MessageTemplate {
   footer_text?: string;
   buttons?: Record<string, unknown>[];
   status?: 'Draft' | 'Pending' | 'Approved' | 'Rejected';
+  /** Meta's reason when status='Rejected' (column added in migration 021). */
+  rejection_reason?: string | null;
   created_at: string;
 }
 

@@ -41,6 +41,18 @@ export function isNameConflictError(
 }
 
 /**
+ * Meta rejects templates whose body starts or ends with a variable
+ * ("As variáveis não podem estar no início ou no fim do modelo").
+ * Checked client-side before save/submit to save the round-trip.
+ */
+export function hasVariableAtBounds(body: string): boolean {
+  const trimmed = body.trim()
+  return (
+    /^\{\{\s*\d+\s*\}\}/.test(trimmed) || /\{\{\s*\d+\s*\}\}$/.test(trimmed)
+  )
+}
+
+/**
  * Suggest the next free versioned name: `base_v2`, `base_v3`, …
  *
  * A name that already carries a `_vN` suffix keeps its base, so

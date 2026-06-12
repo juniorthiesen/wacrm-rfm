@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  hasVariableAtBounds,
   isNameConflictError,
   suggestNextName,
   MAX_TEMPLATE_NAME_LENGTH,
@@ -41,6 +42,33 @@ describe('isNameConflictError', () => {
     expect(isNameConflictError(undefined)).toBe(false)
     expect(isNameConflictError(null)).toBe(false)
     expect(isNameConflictError({})).toBe(false)
+  })
+})
+
+describe('hasVariableAtBounds', () => {
+  it('flags a body that ends with a variable', () => {
+    expect(
+      hasVariableAtBounds(
+        'Olá, *{{1}}*!\n\nRecebemos seu pedido *#{{2}}*.\nUse o Pix abaixo:\n\n{{3}}',
+      ),
+    ).toBe(true)
+    expect(hasVariableAtBounds('Código: {{1}}  ')).toBe(true)
+  })
+
+  it('flags a body that starts with a variable', () => {
+    expect(hasVariableAtBounds('{{1}}, seu pedido chegou!')).toBe(true)
+    expect(hasVariableAtBounds('  {{ 1 }} no início')).toBe(true)
+  })
+
+  it('flags a body that is only a variable', () => {
+    expect(hasVariableAtBounds('{{1}}')).toBe(true)
+  })
+
+  it('accepts variables in the middle', () => {
+    expect(
+      hasVariableAtBounds('Pagamento confirmado, *{{1}}*! Pedido *#{{2}}* ok.'),
+    ).toBe(false)
+    expect(hasVariableAtBounds('Sem variável nenhuma.')).toBe(false)
   })
 })
 

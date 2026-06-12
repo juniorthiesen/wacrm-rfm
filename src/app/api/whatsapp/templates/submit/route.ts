@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
+  hasVariableAtBounds,
   isNameConflictError,
   suggestNextName,
 } from '@/lib/whatsapp/template-name'
@@ -178,6 +179,19 @@ export async function POST(request: Request) {
           error: `Template is in ${template.status} status. Only Draft or Rejected templates can be submitted.`,
         },
         { status: 409 },
+      )
+    }
+
+    // Meta always rejects bodies that open or close with a variable —
+    // fail fast with a clear message instead of burning the API call
+    // and flipping the local row to Rejected.
+    if (hasVariableAtBounds(template.body_text)) {
+      return NextResponse.json(
+        {
+          error:
+            'Template body cannot start or end with a variable ({{n}}). Edit the template and add text around it.',
+        },
+        { status: 400 },
       )
     }
 
