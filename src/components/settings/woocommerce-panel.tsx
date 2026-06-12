@@ -96,15 +96,22 @@ export function WooCommercePanel() {
   async function save(payload: Partial<WooConfig> & { regenerate_secret?: boolean }) {
     setSaving(true)
     try {
+      // Credentials come from the live form state, mirroring how
+      // store_url falls back to config above. Without this the main
+      // "Salvar" button — which calls save({}) — never sent the
+      // consumer key/secret the user typed, so they were dropped on
+      // every save (the toggle and regenerate-secret paths also call
+      // save() with no credentials in the payload).
+      const credentials = payload.credentials ?? config.credentials
       const body: Record<string, unknown> = {
         store_url: payload.store_url ?? config.store_url,
         status: payload.status ?? config.status,
       }
-      if (payload.credentials?.consumer_key !== undefined) {
-        body.consumer_key = payload.credentials.consumer_key
+      if (credentials.consumer_key !== undefined) {
+        body.consumer_key = credentials.consumer_key
       }
-      if (payload.credentials?.consumer_secret !== undefined) {
-        body.consumer_secret = payload.credentials.consumer_secret
+      if (credentials.consumer_secret !== undefined) {
+        body.consumer_secret = credentials.consumer_secret
       }
       if (payload.regenerate_secret) {
         body.regenerate_secret = true
