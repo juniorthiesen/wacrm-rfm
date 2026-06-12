@@ -513,7 +513,12 @@ function SyncCard({ canSync }: { canSync: boolean }) {
     if (!canSync || running) return
     setRunning(true)
     try {
-      let safety = 500 // hard cap on iterations
+      // Hard cap on serial page fetches per click. At 50 rows/page this
+      // covers ~250k orders + customers in one run — enough for years of
+      // history. Each iteration is awaited (one in-flight request at a
+      // time), so a high cap doesn't fan out load. If a huge store still
+      // hits it, the sync is resumable: click again to continue.
+      let safety = 5000
       while (safety-- > 0) {
         const result = await tick()
         if (!result) break
