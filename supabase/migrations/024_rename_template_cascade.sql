@@ -32,9 +32,12 @@ DECLARE
   v_status TEXT;
   v_steps INT;
 BEGIN
-  IF p_new_name !~ '^[a-z0-9_]{1,512}$' THEN
+  -- Postgres caps regex repetition bounds at 255, so '{1,512}' is a
+  -- runtime error ("invalid repetition count(s)") — check the length
+  -- separately instead.
+  IF p_new_name !~ '^[a-z0-9_]+$' OR length(p_new_name) > 512 THEN
     RAISE EXCEPTION 'invalid_name'
-      USING HINT = 'Template names must be lowercase letters, digits and underscores.';
+      USING HINT = 'Template names must be lowercase letters, digits and underscores (max 512 chars).';
   END IF;
 
   SELECT t.name, t.language, t.user_id, t.status
