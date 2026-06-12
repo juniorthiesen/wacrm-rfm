@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag, ContactNote, CustomField, ContactCustomValue, Deal } from '@/types';
@@ -32,6 +33,7 @@ import {
   Save,
   X,
   DollarSign,
+  MessageSquare,
 } from 'lucide-react';
 
 interface ContactDetailViewProps {
@@ -49,10 +51,12 @@ export function ContactDetailView({
 }: ContactDetailViewProps) {
   const { locale, t } = useTranslation();
   const supabase = createClient();
+  const router = useRouter();
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [startingChat, setStartingChat] = useState(false);
 
   // Details tab
   const [editName, setEditName] = useState('');
@@ -180,6 +184,31 @@ export function ContactDetailView({
     await navigator.clipboard.writeText(contact.phone);
     setCopiedPhone(true);
     setTimeout(() => setCopiedPhone(false), 2000);
+  }
+
+  // Open (or create) this contact's inbox thread and navigate to it.
+  // The inbox composer handles the 24h-window rule (free text vs
+  // template) so we just need the conversation id.
+  async function startConversation() {
+    if (!contactId) return;
+    setStartingChat(true);
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ contact_id: contactId }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error ?? t('contacts.startConversationError'));
+        return;
+      }
+      router.push(`/inbox?c=${json.conversation_id}`);
+    } catch {
+      toast.error(t('contacts.startConversationError'));
+    } finally {
+      setStartingChat(false);
+    }
   }
 
   async function saveDetails() {
@@ -380,6 +409,18 @@ export function ContactDetailView({
                   </div>
                 </div>
               </div>
+              <Button
+                onClick={startConversation}
+                disabled={startingChat}
+                className="mt-3 w-full bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                {startingChat ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <MessageSquare className="size-4" />
+                )}
+                {t('contacts.startConversation')}
+              </Button>
             </SheetHeader>
 
             {/* Tabs */}

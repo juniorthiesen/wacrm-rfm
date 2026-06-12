@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useTranslation } from '@/hooks/use-translation';
 import { toast } from 'sonner';
@@ -41,6 +42,7 @@ import {
   Users,
   ChevronLeft,
   ChevronRight,
+  MessageSquare,
 } from 'lucide-react';
 import { ContactForm } from '@/components/contacts/contact-form';
 import { ContactDetailView } from '@/components/contacts/contact-detail-view';
@@ -54,9 +56,13 @@ interface ContactWithTags extends Contact {
 
 export default function ContactsPage() {
   const supabase = createClient();
+  const router = useRouter();
   const { t, locale } = useTranslation();
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
+  // Contact id whose conversation is being opened (find-or-create in
+  // flight) — drives the per-row spinner.
+  const [startingChatId, setStartingChatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -175,6 +181,30 @@ export default function ContactsPage() {
   function openDetail(contactId: string) {
     setDetailContactId(contactId);
     setDetailOpen(true);
+  }
+
+  // Open (or create) the contact's inbox thread and jump to it. The
+  // composer there enforces the 24h-window rule — free text when open,
+  // template picker when expired — so nothing extra is needed here.
+  async function startConversation(contactId: string) {
+    setStartingChatId(contactId);
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ contact_id: contactId }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error ?? t('contacts.startConversationError'));
+        return;
+      }
+      router.push(`/inbox?c=${json.conversation_id}`);
+    } catch {
+      toast.error(t('contacts.startConversationError'));
+    } finally {
+      setStartingChatId(null);
+    }
   }
 
   function confirmDelete(contact: Contact) {
@@ -350,6 +380,24 @@ export default function ContactsPage() {
                     })}
                   </TableCell>
                   <TableCell>
+                    <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-slate-400 hover:text-primary"
+                      title={t('contacts.startConversation')}
+                      disabled={startingChatId === contact.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startConversation(contact.id);
+                      }}
+                    >
+                      {startingChatId === contact.id ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <MessageSquare className="size-4" />
+                      )}
+                    </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         render={
@@ -390,6 +438,7 @@ export default function ContactsPage() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
