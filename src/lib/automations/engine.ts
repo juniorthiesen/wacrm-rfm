@@ -484,22 +484,44 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
  * Pick the conversation a send-type step should use. Prefer the id the
  * webhook handed us (it's the one that just got the inbound message);
  * fall back to the contact's conversation for resumed/wait paths and
- * manual engine POSTs. Throws if none exists — send steps have
- * no meaningful target without a conversation.
+ * manual engine POSTs.
+ *
+ * Creates the conversation when none exists: order_* triggers
+ * (WooCommerce) routinely fire for customers who have never messaged
+ * us on WhatsApp, so there is no inbound event to have created one —
+ * the outbound template IS the first message of the thread. Mirrors
+ * the minimal insert the WhatsApp webhook uses (defaults fill status,
+ * counters, timestamps).
  */
 async function resolveConversationId(args: ExecuteArgs): Promise<string> {
   const fromCtx = args.context.conversation_id
   if (fromCtx) return fromCtx
   if (!args.contactId) throw new Error('cannot resolve conversation: no contact')
-  const { data, error } = await supabaseAdmin()
+  const db = supabaseAdmin()
+  const { data, error } = await db
     .from('conversations')
     .select('id')
     .eq('user_id', args.automation.user_id)
     .eq('contact_id', args.contactId)
+    .limit(1)
     .maybeSingle()
   if (error) throw new Error(`conversation lookup failed: ${error.message}`)
-  if (!data?.id) throw new Error('no conversation for contact')
-  return data.id as string
+  if (data?.id) return data.id as string
+
+  const { data: created, error: createError } = await db
+    .from('conversations')
+    .insert({
+      user_id: args.automation.user_id,
+      contact_id: args.contactId,
+    })
+    .select('id')
+    .single()
+  if (createError || !created?.id) {
+    throw new Error(
+      `conversation create failed: ${createError?.message ?? 'no row returned'}`,
+    )
+  }
+  return created.id as string
 }
 
 function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
