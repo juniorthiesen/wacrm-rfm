@@ -53,15 +53,22 @@ interface IntegrationConfigRow {
   sync_state: SyncState | Record<string, never>;
 }
 
-async function loadConfig(userId: string): Promise<IntegrationConfigRow | null> {
+async function loadConfig(
+  userId: string,
+): Promise<{ config: IntegrationConfigRow | null; error: string | null }> {
   const admin = adminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("integration_configs")
     .select("user_id, store_url, credentials, status, sync_state")
     .eq("user_id", userId)
     .eq("platform", "woocommerce")
     .maybeSingle();
-  return (data ?? null) as IntegrationConfigRow | null;
+  // Surface the real PostgREST error instead of swallowing it — a
+  // missing `sync_state` column (migration 017 not applied) used to
+  // look identical to "no integration row", reported as the misleading
+  // "Not connected" even though the store was connected and tested OK.
+  if (error) return { config: null, error: error.message };
+  return { config: (data ?? null) as IntegrationConfigRow | null, error: null };
 }
 
 function hydrateState(raw: SyncState | Record<string, never>): SyncState {
@@ -81,7 +88,8 @@ export async function GET() {
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const config = await loadConfig(user.id);
+  const { config, error } = await loadConfig(user.id);
+  if (error) return NextResponse.json({ error }, { status: 500 });
   if (!config) return NextResponse.json({ error: "Not connected" }, { status: 404 });
 
   return NextResponse.json({ state: hydrateState(config.sync_state) });
@@ -91,7 +99,8 @@ export async function POST() {
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const config = await loadConfig(user.id);
+  const { config, error: loadError } = await loadConfig(user.id);
+  if (loadError) return NextResponse.json({ error: loadError }, { status: 500 });
   if (!config) {
     return NextResponse.json({ error: "Not connected" }, { status: 404 });
   }

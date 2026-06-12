@@ -502,7 +502,11 @@ function SyncCard({ canSync }: { canSync: boolean }) {
   async function tick(): Promise<{ done: boolean; state: SyncStateView } | null> {
     const res = await fetch("/api/integrations/woocommerce/sync", { method: "POST" })
     const json = await res.json()
-    if (!res.ok && res.status !== 500) {
+    // The per-page failure path returns 500 *with* a state so the loop
+    // can render the failed run. Any response without a state — auth,
+    // missing integration, a DB/migration error (e.g. sync_state column
+    // absent) — is a hard error to surface, whatever the status code.
+    if (!json?.state) {
       toast.error(json.error ?? "Falha na sincronização")
       return null
     }
