@@ -24,23 +24,18 @@ export const SEGMENTS = [
 ] as const;
 export type RFMSegmentKey = (typeof SEGMENTS)[number];
 
-interface RfmRow {
-  contact_id: string;
-  segment: RFMSegmentKey | null;
-  recency_score: number | null;
-  frequency_score: number | null;
-  monetary_score: number | null;
-  recency_days: number | null;
-  frequency_count: number | null;
-  monetary_value: number | null;
-  last_calculated_at: string | null;
-}
-
 interface ContactRow {
   id: string;
   name: string | null;
   phone: string | null;
   email: string | null;
+}
+
+interface TopMetricRow {
+  contact_id: string;
+  monetary_value: number | null;
+  recency_days: number | null;
+  frequency_count: number | null;
 }
 
 interface TopContact {
@@ -53,6 +48,27 @@ interface TopContact {
   frequency_count: number | null;
 }
 
+// Shape of the jsonb returned by the rfm_insights() Postgres function.
+interface InsightsAgg {
+  total_customers: number | string | null;
+  total_revenue: number | string | null;
+  avg_recency_days: number | string | null;
+  avg_ticket: number | string | null;
+  last_calculated_at: string | null;
+  segments: Array<{
+    segment: string;
+    count: number | string;
+    revenue: number | string;
+    ticket_sum: number | string;
+  }> | null;
+  heatmap: Array<{
+    r: number;
+    f: number;
+    count: number | string;
+    revenue: number | string;
+  }> | null;
+}
+
 export async function GET() {
   const supabase = await createClient();
   const {
@@ -62,65 +78,36 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Pull every RFM row for the tenant. Even on the upper end (~50k
-  // customers) this is one Postgres scan; aggregating in JS keeps the
-  // code readable and avoids 8 round-trips for the segment counts.
-  const { data: rfmData, error: rfmError } = await supabase
-    .from("contact_rfm_metrics")
-    .select(
-      "contact_id, segment, recency_score, frequency_score, monetary_score, recency_days, frequency_count, monetary_value, last_calculated_at",
-    )
-    .eq("user_id", user.id);
-  if (rfmError) {
-    return NextResponse.json({ error: rfmError.message }, { status: 500 });
+  // Aggregate set-based in Postgres (rfm_insights, migration 027). The
+  // previous in-app aggregation read contact_rfm_metrics with a plain
+  // select capped at 1000 rows, so every total was computed over at
+  // most 1000 customers regardless of the real base.
+  const { data: aggData, error: aggError } = await supabase.rpc(
+    "rfm_insights",
+    { p_user_id: user.id },
+  );
+  if (aggError) {
+    return NextResponse.json({ error: aggError.message }, { status: 500 });
   }
-  const rows = (rfmData ?? []) as RfmRow[];
+  const agg = (aggData ?? {}) as InsightsAgg;
 
-  // Totals + per-segment buckets.
+  const totalCustomers = Number(agg.total_customers ?? 0);
+  const totalRevenue = Number(agg.total_revenue ?? 0);
+  const avgRecency =
+    agg.avg_recency_days != null ? Math.round(Number(agg.avg_recency_days)) : null;
+  const avgTicket = Number(agg.avg_ticket ?? 0);
+  const lastCalculated = agg.last_calculated_at ?? null;
+
   const segmentBuckets = new Map<
     string,
     { count: number; revenue: number; ticketSum: number }
   >();
-  let totalCustomers = 0;
-  let totalRevenue = 0;
-  let recencySum = 0;
-  let lastCalculated: string | null = null;
-  // 5x5 grid keyed "r-f".
-  const heatmap = new Map<string, { count: number; revenue: number }>();
-  // Track top contacts per segment as we scan, to avoid a second pass.
-  const topByMonetary: Array<{ contactId: string; row: RfmRow }> = [];
-
-  for (const row of rows) {
-    totalCustomers += 1;
-    const monetary = Number(row.monetary_value ?? 0);
-    totalRevenue += monetary;
-    if (row.recency_days != null) recencySum += row.recency_days;
-    if (
-      row.last_calculated_at &&
-      (!lastCalculated || row.last_calculated_at > lastCalculated)
-    ) {
-      lastCalculated = row.last_calculated_at;
-    }
-
-    const seg = row.segment ?? "lost";
-    const bucket =
-      segmentBuckets.get(seg) ?? { count: 0, revenue: 0, ticketSum: 0 };
-    bucket.count += 1;
-    bucket.revenue += monetary;
-    if (row.frequency_count && row.frequency_count > 0) {
-      bucket.ticketSum += monetary / row.frequency_count;
-    }
-    segmentBuckets.set(seg, bucket);
-
-    if (row.recency_score != null && row.frequency_score != null) {
-      const key = `${row.recency_score}-${row.frequency_score}`;
-      const cell = heatmap.get(key) ?? { count: 0, revenue: 0 };
-      cell.count += 1;
-      cell.revenue += monetary;
-      heatmap.set(key, cell);
-    }
-
-    topByMonetary.push({ contactId: row.contact_id, row });
+  for (const s of agg.segments ?? []) {
+    segmentBuckets.set(s.segment, {
+      count: Number(s.count),
+      revenue: Number(s.revenue),
+      ticketSum: Number(s.ticket_sum),
+    });
   }
 
   // Build segment array in stable order so the UI palette aligns.
@@ -138,22 +125,32 @@ export async function GET() {
 
   // Heatmap as a 25-cell array (always 5x5 so the renderer doesn't
   // need to handle missing cells).
+  const heatLookup = new Map<string, { count: number; revenue: number }>();
+  for (const c of agg.heatmap ?? []) {
+    heatLookup.set(`${c.r}-${c.f}`, {
+      count: Number(c.count),
+      revenue: Number(c.revenue),
+    });
+  }
   const heatmapCells: Array<{ r: number; f: number; count: number; revenue: number }> = [];
   for (let r = 1; r <= 5; r++) {
     for (let f = 1; f <= 5; f++) {
-      const c = heatmap.get(`${r}-${f}`) ?? { count: 0, revenue: 0 };
+      const c = heatLookup.get(`${r}-${f}`) ?? { count: 0, revenue: 0 };
       heatmapCells.push({ r, f, count: c.count, revenue: c.revenue });
     }
   }
 
-  // Top contacts per "actionable" segment. Limit a few names worth a
-  // round-trip to fetch their display details from `contacts`.
-  const topChampions = filterTopBySegment(topByMonetary, "champion", 10);
-  const topAtRisk = filterTopBySegment(topByMonetary, "in_risk", 10);
+  // Top contacts per "actionable" segment — ordered + limited in the DB
+  // so they're never subject to the 1000-row cap.
+  const [championRows, atRiskRows] = await Promise.all([
+    fetchTopBySegment(supabase, user.id, "champion"),
+    fetchTopBySegment(supabase, user.id, "in_risk"),
+  ]);
+
   const contactIds = Array.from(
     new Set([
-      ...topChampions.map((x) => x.contactId),
-      ...topAtRisk.map((x) => x.contactId),
+      ...championRows.map((x) => x.contact_id),
+      ...atRiskRows.map((x) => x.contact_id),
     ]),
   );
 
@@ -168,30 +165,18 @@ export async function GET() {
     );
   }
 
-  function hydrate(item: { contactId: string; row: RfmRow }): TopContact {
-    const c = contactsById.get(item.contactId);
+  function hydrate(row: TopMetricRow): TopContact {
+    const c = contactsById.get(row.contact_id);
     return {
-      contact_id: item.contactId,
+      contact_id: row.contact_id,
       name: c?.name ?? null,
       phone: c?.phone ?? null,
       email: c?.email ?? null,
-      monetary_value: Number(item.row.monetary_value ?? 0),
-      recency_days: item.row.recency_days,
-      frequency_count: item.row.frequency_count,
+      monetary_value: Number(row.monetary_value ?? 0),
+      recency_days: row.recency_days,
+      frequency_count: row.frequency_count,
     };
   }
-
-  const avgRecency =
-    totalCustomers > 0 ? Math.round(recencySum / totalCustomers) : null;
-  const avgTicket =
-    totalCustomers > 0
-      ? rows.reduce((acc, r) => {
-          if (r.frequency_count && r.frequency_count > 0) {
-            return acc + Number(r.monetary_value ?? 0) / r.frequency_count;
-          }
-          return acc;
-        }, 0) / totalCustomers
-      : 0;
 
   return NextResponse.json({
     total_customers: totalCustomers,
@@ -201,21 +186,22 @@ export async function GET() {
     last_calculated_at: lastCalculated,
     segments,
     heatmap: heatmapCells,
-    top_champions: topChampions.map(hydrate),
-    top_at_risk: topAtRisk.map(hydrate),
+    top_champions: championRows.map(hydrate),
+    top_at_risk: atRiskRows.map(hydrate),
   });
 }
 
-function filterTopBySegment(
-  all: Array<{ contactId: string; row: RfmRow }>,
+async function fetchTopBySegment(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
   segment: RFMSegmentKey,
-  limit: number,
-): Array<{ contactId: string; row: RfmRow }> {
-  return all
-    .filter((x) => x.row.segment === segment)
-    .sort(
-      (a, b) =>
-        Number(b.row.monetary_value ?? 0) - Number(a.row.monetary_value ?? 0),
-    )
-    .slice(0, limit);
+): Promise<TopMetricRow[]> {
+  const { data } = await supabase
+    .from("contact_rfm_metrics")
+    .select("contact_id, monetary_value, recency_days, frequency_count")
+    .eq("user_id", userId)
+    .eq("segment", segment)
+    .order("monetary_value", { ascending: false })
+    .limit(10);
+  return (data ?? []) as TopMetricRow[];
 }
