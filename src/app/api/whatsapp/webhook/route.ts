@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
-import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
+import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
@@ -933,29 +933,38 @@ async function findOrCreateContact(
   phone: string,
   name: string
 ): Promise<ContactOutcome | null> {
-  // Look up existing contacts for this user
-  const { data: contacts, error: contactsError } = await supabaseAdmin()
-    .from('contacts')
-    .select('*')
-    .eq('user_id', userId)
+  // Match against ALL contacts via an indexed last-8-digit comparison
+  // in Postgres (find_contact_id_by_phone, migration 026). This used to
+  // load every contact and match in memory, but that select caps at
+  // 1000 rows — past 1000 contacts the webhook stopped finding the
+  // existing contact and created duplicates, splitting the thread.
+  const admin = supabaseAdmin()
+  const { data: matchId, error: matchError } = await admin.rpc(
+    'find_contact_id_by_phone',
+    { p_user_id: userId, p_phone: phone },
+  )
 
-  if (contactsError) {
-    console.error('Error fetching contacts:', contactsError)
+  if (matchError) {
+    console.error('Error matching contact by phone:', matchError)
     return null
   }
 
-  // Use phonesMatch for flexible matching
-  const existingContact = contacts?.find((c: ContactRow) => phonesMatch(c.phone, phone))
-
-  if (existingContact) {
-    // Update name if it changed
-    if (name && name !== existingContact.name) {
-      await supabaseAdmin()
-        .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
-        .eq('id', existingContact.id)
+  if (matchId) {
+    const { data: existingContact } = await admin
+      .from('contacts')
+      .select('*')
+      .eq('id', matchId)
+      .single()
+    if (existingContact) {
+      // Update name if it changed
+      if (name && name !== existingContact.name) {
+        await admin
+          .from('contacts')
+          .update({ name, updated_at: new Date().toISOString() })
+          .eq('id', existingContact.id)
+      }
+      return { contact: existingContact as ContactRow, wasCreated: false }
     }
-    return { contact: existingContact, wasCreated: false }
   }
 
   // Create new contact
