@@ -136,8 +136,21 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // Meta message id. sender_type='bot' distinguishes automation sends
   // from manual agent sends.
   const content_type = input.kind === 'template' ? 'template' : 'text'
-  const content_text = input.kind === 'text' ? input.text : null
   const template_name = input.kind === 'template' ? input.templateName : null
+  // For templates, render the body with the params we just sent and
+  // store it as content_text — otherwise the inbox bubble shows only an
+  // empty "Template" badge with no text. Best-effort: a send still
+  // records even if the body can't be resolved.
+  let content_text: string | null = input.kind === 'text' ? input.text : null
+  if (input.kind === 'template') {
+    content_text = await renderTemplateBody(
+      db,
+      input.userId,
+      input.templateName,
+      input.language,
+      input.params ?? [],
+    )
+  }
 
   const { error: msgErr } = await db.from('messages').insert({
     conversation_id: input.conversationId,
@@ -165,4 +178,36 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     .eq('id', input.conversationId)
 
   return { whatsapp_message_id: waMessageId }
+}
+
+/**
+ * Resolve a template's local body and fill its positional {{n}}
+ * placeholders with the params that were sent to Meta. Returns null if
+ * the template body can't be found — the caller falls back to a
+ * text-less template record rather than failing the send.
+ *
+ * Filtered by language when known; the same name can exist in several
+ * languages. `.limit(1)` (not single) avoids throwing if more than one
+ * row matches.
+ */
+async function renderTemplateBody(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  userId: string,
+  name: string,
+  language: string | undefined,
+  params: string[],
+): Promise<string | null> {
+  let query = db
+    .from('message_templates')
+    .select('body_text')
+    .eq('user_id', userId)
+    .eq('name', name)
+  if (language) query = query.eq('language', language)
+  const { data } = await query.limit(1)
+  const body = data?.[0]?.body_text as string | undefined
+  if (!body) return null
+  return body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_match: string, n: string) => {
+    return params[Number(n) - 1] ?? ''
+  })
 }
