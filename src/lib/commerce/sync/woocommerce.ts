@@ -161,7 +161,12 @@ async function ingestCustomer(
   const rawPhone = c.billing?.phone || c.shipping?.phone || null;
   const normalizedPhone = normalizePhone(rawPhone);
   const email = (c.email ?? c.billing?.email ?? null) || null;
-  if (!normalizedPhone && !email) return;
+  // WhatsApp CRM: a contact with no real phone can't be messaged and
+  // never enters RFM. Skip phone-less leads instead of minting a
+  // `wooc_<email>` placeholder — those inflated the contact list with
+  // unactionable rows whose "phone" was the email. Buyers still come in
+  // through the orders phase, which always has a billing phone.
+  if (!normalizedPhone) return;
 
   let contact = await findContactByPhoneOrEmail(
     db,
@@ -174,16 +179,12 @@ async function ingestCustomer(
     const fullName =
       `${c.first_name ?? c.billing?.first_name ?? ""} ${c.last_name ?? c.billing?.last_name ?? ""}`.trim() ||
       "WooCommerce Customer";
-    // phone NOT NULL on contacts; placeholder when only email is known.
-    const phoneValue =
-      normalizedPhone ||
-      `wooc_${email?.replace(/[^a-zA-Z0-9]/g, "") || c.id}`;
 
     const { data, error } = await db
       .from("contacts")
       .insert({
         user_id: userId,
-        phone: phoneValue,
+        phone: normalizedPhone,
         name: fullName,
         email,
       })
