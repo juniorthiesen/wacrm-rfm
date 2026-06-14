@@ -326,7 +326,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('send_message needs a contact')
       const text = interpolate(cfg.text, args)
       if (!text.trim()) throw new Error('send_message has empty text')
-      const conversationId = await resolveConversationId(args)
+      const conversationId = await findConversationId(args)
       const { whatsapp_message_id } = await engineSendText({
         userId: args.automation.user_id,
         conversationId,
@@ -340,7 +340,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       const cfg = step.step_config as SendTemplateStepConfig
       if (!args.contactId) throw new Error('send_template needs a contact')
       if (!cfg.template_name) throw new Error('send_template needs template_name')
-      const conversationId = await resolveConversationId(args)
+      const conversationId = await findConversationId(args)
       // Meta templates use positional {{1}}, {{2}}, … placeholders, so
       // we MUST emit params in strict numeric order. Lexicographic sort
       // of "1", "2", …, "10" yields "1", "10", "2", … which silently
@@ -481,24 +481,21 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
 // ------------------------------------------------------------
 
 /**
- * Pick the conversation a send-type step should use. Prefer the id the
- * webhook handed us (it's the one that just got the inbound message);
- * fall back to the contact's conversation for resumed/wait paths and
- * manual engine POSTs.
+ * Find the conversation a send-type step should use, WITHOUT creating
+ * one. Prefer the id the webhook handed us (it's the one that just got
+ * the inbound message); fall back to the contact's existing thread.
  *
- * Creates the conversation when none exists: order_* triggers
- * (WooCommerce) routinely fire for customers who have never messaged
- * us on WhatsApp, so there is no inbound event to have created one —
- * the outbound template IS the first message of the thread. Mirrors
- * the minimal insert the WhatsApp webhook uses (defaults fill status,
- * counters, timestamps).
+ * Returns null when none exists. The sender (meta-send.ts) then creates
+ * the conversation only after the Meta send succeeds — order_* triggers
+ * fire for customers who never messaged us, and creating the thread up
+ * front meant a failed send (e.g. Meta's #100 on a multi-line variable)
+ * left an empty "no messages yet" conversation in the inbox.
  */
-async function resolveConversationId(args: ExecuteArgs): Promise<string> {
+async function findConversationId(args: ExecuteArgs): Promise<string | null> {
   const fromCtx = args.context.conversation_id
   if (fromCtx) return fromCtx
-  if (!args.contactId) throw new Error('cannot resolve conversation: no contact')
-  const db = supabaseAdmin()
-  const { data, error } = await db
+  if (!args.contactId) return null
+  const { data, error } = await supabaseAdmin()
     .from('conversations')
     .select('id')
     .eq('user_id', args.automation.user_id)
@@ -506,22 +503,7 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
     .limit(1)
     .maybeSingle()
   if (error) throw new Error(`conversation lookup failed: ${error.message}`)
-  if (data?.id) return data.id as string
-
-  const { data: created, error: createError } = await db
-    .from('conversations')
-    .insert({
-      user_id: args.automation.user_id,
-      contact_id: args.contactId,
-    })
-    .select('id')
-    .single()
-  if (createError || !created?.id) {
-    throw new Error(
-      `conversation create failed: ${createError?.message ?? 'no row returned'}`,
-    )
-  }
-  return created.id as string
+  return (data?.id as string | undefined) ?? null
 }
 
 function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {

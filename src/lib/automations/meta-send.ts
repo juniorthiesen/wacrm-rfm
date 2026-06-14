@@ -21,18 +21,34 @@ import { supabaseAdmin } from './admin-client'
 
 interface SendTextArgs {
   userId: string
-  conversationId: string
+  /** Existing conversation to attach to, or null to find-or-create it
+   *  AFTER a successful send (so a failed send leaves no empty thread). */
+  conversationId: string | null
   contactId: string
   text: string
 }
 
 interface SendTemplateArgs {
   userId: string
-  conversationId: string
+  conversationId: string | null
   contactId: string
   templateName: string
   language?: string
   params?: string[]
+}
+
+/**
+ * Meta rejects template variables that contain a newline, tab, or 4+
+ * consecutive spaces with "(#100) Invalid parameter". Multi-line values
+ * like a bulleted order.items_list ("▪️ A\n▪️ B") trip this on every
+ * send. Collapse the offending whitespace so the value goes through as
+ * a single inline string.
+ */
+function sanitizeTemplateParam(value: string): string {
+  return value
+    .replace(/[\r\n\t]+/g, ' · ')
+    .replace(/ {4,}/g, '   ')
+    .trim()
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
@@ -94,7 +110,9 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         to: phone,
         templateName: input.templateName,
         language: input.language,
-        params: input.params,
+        // Sanitize so multi-line values (e.g. items_list) don't trip
+        // Meta's "(#100) Invalid parameter" on template variables.
+        params: input.params?.map(sanitizeTemplateParam),
       })
       return r.messageId
     }
@@ -132,6 +150,37 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
   }
 
+  // Resolve the conversation only now that the send succeeded. Creating
+  // it up front meant a failed send (e.g. the items_list #100 error)
+  // left an empty "Nenhuma mensagem ainda" thread in the inbox. If the
+  // caller already had a conversation id we use it; otherwise find-or-
+  // create here, after the message is guaranteed to exist.
+  let conversationId = input.conversationId
+  if (!conversationId) {
+    const { data: existingConv } = await db
+      .from('conversations')
+      .select('id')
+      .eq('user_id', input.userId)
+      .eq('contact_id', input.contactId)
+      .limit(1)
+      .maybeSingle()
+    if (existingConv?.id) {
+      conversationId = existingConv.id as string
+    } else {
+      const { data: created, error: convErr } = await db
+        .from('conversations')
+        .insert({ user_id: input.userId, contact_id: input.contactId })
+        .select('id')
+        .single()
+      if (convErr || !created?.id) {
+        throw new Error(
+          `sent to Meta but conversation create failed: ${convErr?.message ?? 'no row'}`,
+        )
+      }
+      conversationId = created.id as string
+    }
+  }
+
   // Persist the sent message so it appears in the inbox with a real
   // Meta message id. sender_type='bot' distinguishes automation sends
   // from manual agent sends.
@@ -153,7 +202,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   }
 
   const { error: msgErr } = await db.from('messages').insert({
-    conversation_id: input.conversationId,
+    conversation_id: conversationId,
     sender_type: 'bot',
     content_type,
     content_text,
@@ -175,7 +224,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', input.conversationId)
+    .eq('id', conversationId)
 
   return { whatsapp_message_id: waMessageId }
 }
