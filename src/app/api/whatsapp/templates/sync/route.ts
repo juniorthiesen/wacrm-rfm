@@ -33,10 +33,18 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 const META_API_VERSION = 'v21.0'
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
 
+interface MetaTemplateButton {
+  type: string
+  text: string
+  url?: string
+  phone_number?: string
+}
+
 interface MetaTemplateComponent {
   type: string
   text?: string
   format?: string
+  buttons?: MetaTemplateButton[]
 }
 
 interface MetaTemplate {
@@ -171,6 +179,22 @@ export async function POST() {
       const body = (t.components ?? []).find((c) => c.type === 'BODY')
       const header = (t.components ?? []).find((c) => c.type === 'HEADER')
       const footer = (t.components ?? []).find((c) => c.type === 'FOOTER')
+      const buttonsComp = (t.components ?? []).find((c) => c.type === 'BUTTONS')
+
+      // Persist the template's buttons (Quick Reply / URL / phone) so the
+      // local row reflects what Meta actually has — otherwise buttons
+      // stayed null even for templates that carry them, and the Template
+      // Manager couldn't show them. Mapped to the same shape the submit
+      // endpoint produces.
+      const buttons =
+        buttonsComp?.buttons && buttonsComp.buttons.length > 0
+          ? buttonsComp.buttons.map((b) => ({
+              type: b.type,
+              text: b.text,
+              ...(b.url ? { url: b.url } : {}),
+              ...(b.phone_number ? { phone_number: b.phone_number } : {}),
+            }))
+          : null
 
       const row = {
         user_id: user.id,
@@ -181,6 +205,7 @@ export async function POST() {
         header_content: header?.text ?? null,
         body_text: body?.text ?? '',
         footer_text: footer?.text ?? null,
+        buttons,
         status: normalizeStatus(t.status),
         updated_at: new Date().toISOString(),
       }
