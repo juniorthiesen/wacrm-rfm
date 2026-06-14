@@ -79,6 +79,8 @@ FROM (
     ('026 find contact by phone',
       EXISTS (SELECT 1 FROM pg_proc WHERE proname='find_contact_id_by_phone')),
     ('027 rfm insights function',
-      EXISTS (SELECT 1 FROM pg_proc WHERE proname='rfm_insights'))
+      EXISTS (SELECT 1 FROM pg_proc WHERE proname='rfm_insights')),
+    ('028 seed woo order details reply',
+      EXISTS (SELECT 1 FROM pg_proc WHERE proname='seed_woo_order_details_reply'))
 ) AS t(migration, present)
 ORDER BY migration;
