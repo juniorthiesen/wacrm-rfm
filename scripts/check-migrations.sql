@@ -81,6 +81,8 @@ FROM (
     ('027 rfm insights function',
       EXISTS (SELECT 1 FROM pg_proc WHERE proname='rfm_insights')),
     ('028 seed woo order details reply',
-      EXISTS (SELECT 1 FROM pg_proc WHERE proname='seed_woo_order_details_reply'))
+      EXISTS (SELECT 1 FROM pg_proc WHERE proname='seed_woo_order_details_reply')),
+    ('029 sync rfm tags',
+      EXISTS (SELECT 1 FROM pg_proc WHERE proname='sync_rfm_tags'))
 ) AS t(migration, present)
 ORDER BY migration;
