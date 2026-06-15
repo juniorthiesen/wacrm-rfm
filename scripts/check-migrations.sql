@@ -89,6 +89,8 @@ FROM (
     ('031 broadcast drip',
       EXISTS (SELECT 1 FROM pg_proc WHERE proname='create_segment_campaign')),
     ('032 filtered campaign',
-      EXISTS (SELECT 1 FROM pg_proc WHERE proname='create_filtered_campaign'))
+      EXISTS (SELECT 1 FROM pg_proc WHERE proname='create_filtered_campaign')),
+    ('033 rfm segment contacts',
+      EXISTS (SELECT 1 FROM pg_proc WHERE proname='rfm_segment_contacts'))
 ) AS t(migration, present)
 ORDER BY migration;

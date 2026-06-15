@@ -16,6 +16,7 @@ import {
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/hooks/use-translation";
+import { SegmentExplorer } from "@/components/rfm/segment-explorer";
 
 // RFM cockpit. Reads the aggregate from /api/rfm/insights once on mount
 // and renders 4 metric cards + donut + revenue bars + R×F heatmap +
@@ -291,6 +292,13 @@ export default function RfmPage() {
           </ul>
         </section>
       </div>
+
+      {/* Segment explorer — click a segment to drill into its customers */}
+      <SegmentExplorer
+        segments={data.segments}
+        colors={SEGMENT_COLORS}
+        locale={locale}
+      />
 
       {/* Heatmap */}
       <section className="rounded-xl border border-slate-800 bg-slate-900 p-5">
