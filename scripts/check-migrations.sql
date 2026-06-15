@@ -85,6 +85,8 @@ FROM (
     ('029 sync rfm tags',
       EXISTS (SELECT 1 FROM pg_proc WHERE proname='sync_rfm_tags')),
     ('030 rfm paid statuses',
-      to_regclass('public.idx_orders_rfm_paid') IS NOT NULL)
+      to_regclass('public.idx_orders_rfm_paid') IS NOT NULL),
+    ('031 broadcast drip',
+      EXISTS (SELECT 1 FROM pg_proc WHERE proname='create_segment_campaign'))
 ) AS t(migration, present)
 ORDER BY migration;

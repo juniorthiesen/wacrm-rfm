@@ -3,6 +3,10 @@
     {
       "path": "/api/rfm/cron",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/broadcasts/drip",
+      "schedule": "0 * * * *"
     }
   ]
 }
