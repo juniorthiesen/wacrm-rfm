@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/rfm/cron",
+      "schedule": "0 6 * * *"
+    }
+  ]
+}
