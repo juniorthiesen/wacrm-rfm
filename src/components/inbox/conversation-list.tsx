@@ -16,7 +16,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -128,7 +127,15 @@ export function ConversationList({
       });
     }
 
-    return result;
+    // Most recent activity first; conversations with no message yet
+    // (null last_message_at) sink to the bottom. The initial query
+    // orders this way already, but realtime updates from the parent can
+    // arrive out of order, so re-sort here on every render.
+    return [...result].sort((a, b) => {
+      const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return tb - ta;
+    });
   }, [conversations, filter, search]);
 
   const handleSearchChange = useCallback(
@@ -198,8 +205,10 @@ export function ConversationList({
         </DropdownMenu>
       </div>
 
-      {/* Conversation Items */}
-      <ScrollArea className="flex-1">
+      {/* Conversation Items — native scroll with a thin custom scrollbar
+          (min-h-0 lets the flex child actually shrink so overflow kicks
+          in instead of the list growing past the viewport). */}
+      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -220,7 +229,7 @@ export function ConversationList({
             ))}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }
