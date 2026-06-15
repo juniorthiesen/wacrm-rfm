@@ -83,6 +83,8 @@ FROM (
     ('028 seed woo order details reply',
       EXISTS (SELECT 1 FROM pg_proc WHERE proname='seed_woo_order_details_reply')),
     ('029 sync rfm tags',
-      EXISTS (SELECT 1 FROM pg_proc WHERE proname='sync_rfm_tags'))
+      EXISTS (SELECT 1 FROM pg_proc WHERE proname='sync_rfm_tags')),
+    ('030 rfm paid statuses',
+      to_regclass('public.idx_orders_rfm_paid') IS NOT NULL)
 ) AS t(migration, present)
 ORDER BY migration;
