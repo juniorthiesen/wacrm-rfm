@@ -82,6 +82,9 @@ export function ConversationList({
       const { data, error } = await supabase
         .from("conversations")
         .select("*, contact:contacts(*)")
+        // Hide archived threads from the default list; an inbound message
+        // clears archived_at (webhook) so they resurface automatically.
+        .is("archived_at", null)
         .order("last_message_at", { ascending: false });
 
       if (cancelled) return;

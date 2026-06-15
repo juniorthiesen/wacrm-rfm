@@ -21,6 +21,9 @@ import {
   Clock,
   ArrowLeft,
   RefreshCw,
+  MoreVertical,
+  Archive,
+  Trash2,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours, type Locale as DateLocale } from "date-fns";
 import { ptBR, enUS } from "date-fns/locale";
@@ -34,6 +37,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { MessageBubble } from "./message-bubble";
 import { MessageActions } from "./message-actions";
 import { MessageComposer } from "./message-composer";
@@ -66,6 +78,11 @@ interface MessageThreadProps {
     conversationId: string,
     assignedAgentId: string | null,
   ) => void;
+  /**
+   * Fired after the open conversation is archived or deleted, so the
+   * parent drops it from the list and clears the active selection.
+   */
+  onConversationRemoved?: (conversationId: string) => void;
   /**
    * On mobile, the thread is shown full-screen with the conversation list
    * hidden. This callback lets the page deselect the active conversation
@@ -143,6 +160,7 @@ export function MessageThread({
   onUpdateMessage,
   onStatusChange,
   onAssignChange,
+  onConversationRemoved,
   onBack,
   resyncToken = 0,
   onRefresh,
@@ -151,6 +169,7 @@ export function MessageThread({
   const dateLocale = locale === "pt-BR" ? ptBR : enUS;
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -505,6 +524,40 @@ export function MessageThread({
     },
     [conversation, onStatusChange]
   );
+
+  const handleArchive = useCallback(async () => {
+    if (!conversation) return;
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("conversations")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", conversation.id);
+    if (error) {
+      toast.error(t("inbox.archiveFailed"));
+      return;
+    }
+    toast.success(t("inbox.archived"));
+    onConversationRemoved?.(conversation.id);
+  }, [conversation, onConversationRemoved, t]);
+
+  const handleDelete = useCallback(async () => {
+    if (!conversation) return;
+    const supabase = createClient();
+    // Hard delete — messages cascade via FK. The webhook would recreate
+    // the thread if this contact writes again, which is fine for the
+    // spam/test threads this targets.
+    const { error } = await supabase
+      .from("conversations")
+      .delete()
+      .eq("id", conversation.id);
+    if (error) {
+      toast.error(t("inbox.deleteFailed"));
+      return;
+    }
+    setConfirmingDelete(false);
+    toast.success(t("inbox.deleted"));
+    onConversationRemoved?.(conversation.id);
+  }, [conversation, onConversationRemoved, t]);
 
   const handleOpenTemplates = useCallback(() => {
     setTemplateModalOpen(true);
@@ -874,6 +927,30 @@ export function MessageThread({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Overflow: archive / delete */}
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white">
+              <MoreVertical className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="border-slate-700 bg-slate-800">
+              <DropdownMenuItem
+                onClick={handleArchive}
+                className="text-sm text-slate-300"
+              >
+                <Archive className="h-3.5 w-3.5" />
+                {t("inbox.archive")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-slate-700" />
+              <DropdownMenuItem
+                onClick={() => setConfirmingDelete(true)}
+                variant="destructive"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {t("inbox.delete")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -1042,6 +1119,32 @@ export function MessageThread({
         onOpenChange={setTemplateModalOpen}
         onSelect={handleSendTemplate}
       />
+
+      <Dialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+        <DialogContent className="border-slate-700 bg-slate-900 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              {t("inbox.deleteTitle")}
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {t("inbox.deleteConfirm")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmingDelete(false)}
+              className="border-slate-700 text-slate-300 hover:bg-slate-800"
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button variant="destructive" onClick={handleDelete}>
+              <Trash2 className="size-4" />
+              {t("inbox.delete")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
