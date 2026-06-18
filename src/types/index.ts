@@ -279,8 +279,14 @@ export type AutomationTriggerType =
   | 'order_failed'
   // Customer requested a magic-login / quick-access link (SmartCheckout
   // / Loja5 password-recovery webhook). See
-  // src/app/api/integrations/woocommerce/magic-login/route.ts.
-  | 'customer_magic_login_requested';
+  // src/app/api/integrations/woocommerce/webhook/route.ts (magic-login
+  // dispatch branch).
+  | 'customer_magic_login_requested'
+  // Customer abandoned the cart at checkout (Funnelkit / BuildwooFunnels
+  // Cart Abandonment Recovery hook posting multipart/form-data with
+  // order_status=abandoned). Context exposes cart.{checkout_url,
+  // coupon_code, total, product_names}.
+  | 'cart_abandoned';
 
 export type AutomationStepType =
   | 'send_message'

@@ -45,6 +45,20 @@ export interface AutomationContext {
     [key: string]: unknown
   }
   /**
+   * Cart-abandonment context — populated by Funnelkit / BuildwooFunnels
+   * Cart Abandonment Recovery webhooks posting multipart/form-data.
+   * `checkout_url` includes the recovery token so the button drops the
+   * customer back into their abandoned cart pre-filled.
+   */
+  cart?: {
+    checkout_url?: string
+    checkout_url_suffix?: string
+    coupon_code?: string
+    total?: string
+    product_names?: string
+    [key: string]: unknown
+  }
+  /**
    * E-commerce order context — populated by external-platform webhooks
    * (e.g. WooCommerce) when firing the `order_*` family of triggers.
    * Used to interpolate `{{order.X}}` and `{{customer.X}}` placeholders
@@ -606,6 +620,10 @@ function interpolate(s: string, args: ExecuteArgs): string {
     }
     if (ns === 'magic_login' && prop) {
       const v = args.context.magic_login?.[prop]
+      return v == null ? '' : String(v)
+    }
+    if (ns === 'cart' && prop) {
+      const v = args.context.cart?.[prop]
       return v == null ? '' : String(v)
     }
     return ''

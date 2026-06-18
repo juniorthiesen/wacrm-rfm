@@ -664,7 +664,7 @@ export const translations = {
         templateNoVariables: "This template has no variables.",
         templateButtonUrlLabel: "URL button suffix (optional)",
         templateButtonUrlHelp: "Only set this for templates whose URL button is configured as Dynamic in Meta Business Manager. The value here is appended to the button's Base URL. Use {{magic_login.suffix}} for the SmartCheckout magic-link flow.",
-        templateVariableHelp: "Use {{customer.name}}, {{customer.first_name}}, {{order.number}}, {{order.total}}, {{order.pix_code}}, {{order.tracking_code}}, {{order.items_list}}, {{magic_login.url}}, {{magic_login.suffix}}, {{vars.X}} or {{message.text}} as dynamic placeholders.",
+        templateVariableHelp: "Use {{customer.name}}, {{customer.first_name}}, {{order.number}}, {{order.total}}, {{order.pix_code}}, {{order.tracking_code}}, {{order.items_list}}, {{magic_login.url}}, {{magic_login.suffix}}, {{cart.checkout_url}}, {{cart.coupon_code}}, {{cart.product_names}}, {{vars.X}} or {{message.text}} as dynamic placeholders.",
         templateTestLabel: "Send test",
         templateTestButton: "Send",
         templateTestWarning: "This sends a real message via Meta and is billed. Variables are sent literally — fill in sample values to preview them.",
@@ -717,7 +717,8 @@ export const translations = {
         order_cancelled: "Order Cancelled",
         order_refunded: "Order Refunded",
         order_failed: "Order Failed",
-        customer_magic_login_requested: "Magic Login Requested"
+        customer_magic_login_requested: "Magic Login Requested",
+        cart_abandoned: "Cart Abandoned"
       },
       triggerHints: {
         new_message_received: "Any incoming message",
@@ -735,7 +736,8 @@ export const translations = {
         order_cancelled: "Order cancelled by customer or store admin",
         order_refunded: "Refund issued for the order",
         order_failed: "Payment failed for the order",
-        customer_magic_login_requested: "Customer requested a quick-access / magic-login link (SmartCheckout / Loja5). Use {{magic_login.suffix}} for the dynamic URL button."
+        customer_magic_login_requested: "Customer requested a quick-access / magic-login link (SmartCheckout / Loja5). Use {{magic_login.suffix}} for the dynamic URL button.",
+        cart_abandoned: "Customer abandoned the cart at checkout (Funnelkit / BuildwooFunnels). Use {{cart.checkout_url_suffix}} for the dynamic URL button to bring them back to the cart."
       },
       stepMeta: {
         send_message: "Send Message",
@@ -2026,7 +2028,7 @@ export const translations = {
         templateNoVariables: "Este modelo não tem variáveis.",
         templateButtonUrlLabel: "Sufixo do botão URL (opcional)",
         templateButtonUrlHelp: "Só preencha quando o botão URL do modelo estiver configurado como Dinâmico no Meta Business Manager. O valor aqui é anexado ao Base URL do botão. Use {{magic_login.suffix}} para o fluxo de magic link do SmartCheckout.",
-        templateVariableHelp: "Use {{customer.name}}, {{customer.first_name}}, {{order.number}}, {{order.total}}, {{order.pix_code}}, {{order.tracking_code}}, {{order.items_list}}, {{magic_login.url}}, {{magic_login.suffix}}, {{vars.X}} ou {{message.text}} como placeholders dinâmicos.",
+        templateVariableHelp: "Use {{customer.name}}, {{customer.first_name}}, {{order.number}}, {{order.total}}, {{order.pix_code}}, {{order.tracking_code}}, {{order.items_list}}, {{magic_login.url}}, {{magic_login.suffix}}, {{cart.checkout_url}}, {{cart.coupon_code}}, {{cart.product_names}}, {{vars.X}} ou {{message.text}} como placeholders dinâmicos.",
         tagIdLabel: "ID da etiqueta",
         modeLabel: "Modo",
         roundRobinOption: "Distribuição (Round-robin)",
@@ -2074,7 +2076,8 @@ export const translations = {
         order_cancelled: "Pedido Cancelado",
         order_refunded: "Pedido Reembolsado",
         order_failed: "Pedido Falhou",
-        customer_magic_login_requested: "Magic Login Solicitado"
+        customer_magic_login_requested: "Magic Login Solicitado",
+        cart_abandoned: "Carrinho Abandonado"
       },
       triggerHints: {
         new_message_received: "Qualquer mensagem recebida",
@@ -2092,7 +2095,8 @@ export const translations = {
         order_cancelled: "Pedido cancelado pelo cliente ou admin",
         order_refunded: "Reembolso emitido para o pedido",
         order_failed: "Pagamento falhou no pedido",
-        customer_magic_login_requested: "Cliente pediu link de acesso rápido (SmartCheckout / Loja5). Use {{magic_login.suffix}} no botão dinâmico do modelo."
+        customer_magic_login_requested: "Cliente pediu link de acesso rápido (SmartCheckout / Loja5). Use {{magic_login.suffix}} no botão dinâmico do modelo.",
+        cart_abandoned: "Cliente abandonou o checkout (Funnelkit / BuildwooFunnels). Use {{cart.checkout_url_suffix}} no botão dinâmico pra trazer ele de volta ao carrinho."
       },
       stepMeta: {
         send_message: "Enviar Mensagem",

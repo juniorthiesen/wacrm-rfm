@@ -136,6 +136,7 @@ function getTriggerOptions(t: (key: string) => string) {
     { value: "order_refunded" as AutomationTriggerType, label: t("automations.triggerOptions.order_refunded"), hint: t("automations.triggerHints.order_refunded") },
     { value: "order_failed" as AutomationTriggerType, label: t("automations.triggerOptions.order_failed"), hint: t("automations.triggerHints.order_failed") },
     { value: "customer_magic_login_requested" as AutomationTriggerType, label: t("automations.triggerOptions.customer_magic_login_requested"), hint: t("automations.triggerHints.customer_magic_login_requested") },
+    { value: "cart_abandoned" as AutomationTriggerType, label: t("automations.triggerOptions.cart_abandoned"), hint: t("automations.triggerHints.cart_abandoned") },
   ]
 }
 

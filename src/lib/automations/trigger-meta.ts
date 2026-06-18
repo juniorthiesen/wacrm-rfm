@@ -71,6 +71,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Magic Login Solicitado',
     pillClass: 'border-yellow-500/30 bg-yellow-500/10 text-yellow-300',
   },
+  cart_abandoned: {
+    label: 'Carrinho Abandonado',
+    pillClass: 'border-pink-500/30 bg-pink-500/10 text-pink-300',
+  },
 }
 
 export function triggerMeta(t: AutomationTriggerType | string): TriggerMeta {
