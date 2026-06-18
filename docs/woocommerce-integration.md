@@ -265,15 +265,24 @@ encaminhar pra uma automation com botão URL dinâmico no template.
 
 ### Endpoint
 
+Reaproveita **a mesma URL** do webhook principal — não precisa criar
+endpoint separado:
+
 ```
-POST https://crm.auroralabs.com.br/api/integrations/woocommerce/magic-login
+POST https://crm.auroralabs.com.br/api/integrations/woocommerce/webhook
   ?user_id=<SEU_USER_ID>&token=<MESMO webhook_secret>
 ```
 
-Use o **mesmo `webhook_secret`** que está em Configurações →
-WooCommerce. Diferente do webhook principal do WC (que tem HMAC), este
-endpoint valida o secret via query string porque o hook do tema não
-assina os requests.
+Como dispatch o endpoint distingue:
+
+- **Payload com `id` + `status`** → trata como evento de pedido (HMAC
+  via header `x-wc-webhook-signature`, padrão WC)
+- **Payload com `url` + `user`** (sem `id` no topo) → trata como
+  magic-login (auth via `?token=` query string, padrão hook custom)
+
+Mesmo `webhook_secret` em Configurações → WooCommerce, só varia o
+transporte (header HMAC vs query token) conforme o que cada origem
+consegue assinar.
 
 ### Configuração no WordPress (theme/plugin)
 
@@ -281,7 +290,7 @@ No `functions.php` (ou onde você dispara o webhook hoje), troca a URL
 de destino pelo endpoint do WaCRM:
 
 ```php
-$wacrm_webhook = 'https://crm.auroralabs.com.br/api/integrations/woocommerce/magic-login'
+$wacrm_webhook = 'https://crm.auroralabs.com.br/api/integrations/woocommerce/webhook'
     . '?user_id=' . SEU_USER_ID
     . '&token=' . SEU_WEBHOOK_SECRET;
 
@@ -354,15 +363,17 @@ o WhatsApp com botão "Acessar minha conta" — tap = login direto.
 | `{{customer.name}}` | nome completo (montado a partir de first_name + last_name) |
 | `{{customer.phone}}`, `{{customer.email}}` | os do payload |
 
-### Por que dois esquemas (HMAC no webhook principal, token query string aqui)?
+### Por que dois esquemas (HMAC E token query string)?
 
-O webhook principal `/woocommerce/webhook` é criado pelo WC nativo, que
-assina cada POST com `x-wc-webhook-signature` (HMAC-SHA256 + secret).
-O hook custom do tema (magic login) não usa essa pipeline — é um
-`wp_remote_post` direto. Pra não te obrigar a escrever HMAC em PHP no
-tema, esse endpoint aceita o mesmo secret na query string, validado
-com `crypto.timingSafeEqual` no Node. Mesmo nível de segurança que um
-HMAC pré-imagem desde que o secret não vaze.
+O webhook nativo do WC assina cada POST com `x-wc-webhook-signature`
+(HMAC-SHA256 + secret). O hook custom do tema (magic login) não usa
+essa pipeline — é um `wp_remote_post` direto. Pra não te obrigar a
+escrever HMAC em PHP no tema, o endpoint aceita o mesmo secret na
+query string como `?token=`, validado com `crypto.timingSafeEqual`.
+
+Mesmo nível de segurança que HMAC desde que o secret não vaze. O
+endpoint exige **pelo menos um dos dois** — request sem signature E
+sem token retorna 401.
 
 ## TODO — Fase 2 (UI)
 
