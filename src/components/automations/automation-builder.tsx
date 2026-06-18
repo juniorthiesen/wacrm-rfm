@@ -122,6 +122,9 @@ function getTriggerOptions(t: (key: string) => string) {
     { value: "conversation_assigned" as AutomationTriggerType, label: t("automations.triggerOptions.conversation_assigned"), hint: t("automations.triggerHints.conversation_assigned") },
     { value: "tag_added" as AutomationTriggerType, label: t("automations.triggerOptions.tag_added"), hint: t("automations.triggerHints.tag_added") },
     { value: "time_based" as AutomationTriggerType, label: t("automations.triggerOptions.time_based"), hint: t("automations.triggerHints.time_based") },
+    // Birthday — fired once a day by /api/automations/birthday-cron for
+    // each contact whose birthday is today. No trigger_config needed.
+    { value: "birthday" as AutomationTriggerType, label: t("automations.triggerOptions.birthday"), hint: t("automations.triggerHints.birthday") },
     // E-commerce order lifecycle triggers — fired by the WooCommerce
     // webhook on a real status transition. See docs/woocommerce-
     // integration.md and src/app/api/integrations/woocommerce/webhook.
@@ -132,6 +135,7 @@ function getTriggerOptions(t: (key: string) => string) {
     { value: "order_cancelled" as AutomationTriggerType, label: t("automations.triggerOptions.order_cancelled"), hint: t("automations.triggerHints.order_cancelled") },
     { value: "order_refunded" as AutomationTriggerType, label: t("automations.triggerOptions.order_refunded"), hint: t("automations.triggerHints.order_refunded") },
     { value: "order_failed" as AutomationTriggerType, label: t("automations.triggerOptions.order_failed"), hint: t("automations.triggerHints.order_failed") },
+    { value: "customer_magic_login_requested" as AutomationTriggerType, label: t("automations.triggerOptions.customer_magic_login_requested"), hint: t("automations.triggerHints.customer_magic_login_requested") },
   ]
 }
 
@@ -975,6 +979,23 @@ function SendTemplateConfig({
           )}
         </FieldBlock>
       )}
+
+      {/* URL button suffix — only matters when the template has a
+          Dynamic URL button. We render it for any selected template
+          (no easy way to know from message_templates whether the
+          template has a dynamic URL button without reading components),
+          and silently no-op if left empty. */}
+      <FieldBlock label={t("automations.builder.templateButtonUrlLabel")}>
+        <Input
+          value={(cfg.button_url_param as string) ?? ""}
+          onChange={(e) => set({ button_url_param: e.target.value })}
+          placeholder="{{magic_login.suffix}}"
+          className="bg-slate-800 text-white"
+        />
+        <p className="mt-1 text-xs text-slate-500">
+          {t("automations.builder.templateButtonUrlHelp")}
+        </p>
+      </FieldBlock>
 
       {(selected || currentName) && (
         <TemplateTestSend

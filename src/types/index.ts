@@ -24,6 +24,9 @@ export interface Contact {
   email?: string;
   company?: string;
   avatar_url?: string;
+  /** Date of birth (YYYY-MM-DD). Year may be a placeholder; only month+day
+   *  are used by the birthday automation. */
+  birthday?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -259,6 +262,10 @@ export type AutomationTriggerType =
   | 'conversation_assigned'
   | 'tag_added'
   | 'time_based'
+  // Fired once a day by the birthday cron for each contact whose
+  // contacts.birthday matches today (month + day). See
+  // src/app/api/automations/birthday-cron/route.ts.
+  | 'birthday'
   // E-commerce / WooCommerce order lifecycle. Triggered by the
   // WooCommerce webhook on a status transition (not on every upsert).
   // See src/app/api/integrations/woocommerce/webhook/route.ts and
@@ -269,7 +276,11 @@ export type AutomationTriggerType =
   | 'order_shipped'
   | 'order_cancelled'
   | 'order_refunded'
-  | 'order_failed';
+  | 'order_failed'
+  // Customer requested a magic-login / quick-access link (SmartCheckout
+  // / Loja5 password-recovery webhook). See
+  // src/app/api/integrations/woocommerce/magic-login/route.ts.
+  | 'customer_magic_login_requested';
 
 export type AutomationStepType =
   | 'send_message'
@@ -317,6 +328,14 @@ export interface SendTemplateStepConfig {
   template_name: string;
   language?: string;
   variables?: Record<string, string>;
+  /**
+   * Dynamic suffix for the template's URL button (first button only,
+   * index 0). Use Meta's "Dynamic" URL button type in Business Manager
+   * — the resulting URL is `<base URL>` + this value. Supports the same
+   * {{customer.X}} / {{order.X}} / {{magic_login.X}} placeholders as
+   * regular variables.
+   */
+  button_url_param?: string;
 }
 
 export interface TagStepConfig {

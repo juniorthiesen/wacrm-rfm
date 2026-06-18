@@ -35,6 +35,9 @@ interface SendTemplateArgs {
   templateName: string
   language?: string
   params?: string[]
+  /** Dynamic suffix for the template's first URL button (sub_type=url,
+   *  index=0). See sendTemplateMessage in lib/whatsapp/meta-api. */
+  buttonUrlParam?: string
 }
 
 /**
@@ -113,6 +116,11 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         // Sanitize so multi-line values (e.g. items_list) don't trip
         // Meta's "(#100) Invalid parameter" on template variables.
         params: input.params?.map(sanitizeTemplateParam),
+        // URL button suffixes can have whitespace too (e.g. interpolated
+        // from {{vars.X}}) — sanitize for the same Meta restriction.
+        buttonUrlParam: input.buttonUrlParam
+          ? sanitizeTemplateParam(input.buttonUrlParam)
+          : undefined,
       })
       return r.messageId
     }

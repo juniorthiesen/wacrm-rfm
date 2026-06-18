@@ -122,6 +122,20 @@ export interface SendTemplateMessageArgs {
   params?: string[]
   /** Meta's message_id of the message being replied to. */
   contextMessageId?: string
+  /**
+   * Dynamic suffix for the template's URL button (sub_type=url at
+   * button index 0). Meta appends this string to the template's base
+   * URL configured in Business Manager — for a base of
+   *   https://shop.com/login/
+   * and a buttonUrlParam of `?uid=3&token=abc`, the customer's tap
+   * resolves to `https://shop.com/login/?uid=3&token=abc`.
+   *
+   * Leave undefined for templates without a URL button or whose URL
+   * button is fully static. Only the FIRST URL button (index 0) is
+   * supported here — multi-button templates would need an array
+   * shape, which no current automation requires.
+   */
+  buttonUrlParam?: string
 }
 
 /**
@@ -139,6 +153,7 @@ export async function sendTemplateMessage(
     language = 'en_US',
     params,
     contextMessageId,
+    buttonUrlParam,
   } = args
   const url = `${META_API_BASE}/${phoneNumberId}/messages`
 
@@ -147,13 +162,26 @@ export async function sendTemplateMessage(
     language: { code: language },
   }
 
+  // Body parameters and the URL button param sit in the SAME `components`
+  // array. Build it up additively so a template can have one, the other,
+  // both, or neither.
+  const components: Record<string, unknown>[] = []
   if (params && params.length > 0) {
-    template.components = [
-      {
-        type: 'body',
-        parameters: params.map((p) => ({ type: 'text', text: String(p) })),
-      },
-    ]
+    components.push({
+      type: 'body',
+      parameters: params.map((p) => ({ type: 'text', text: String(p) })),
+    })
+  }
+  if (buttonUrlParam && buttonUrlParam.length > 0) {
+    components.push({
+      type: 'button',
+      sub_type: 'url',
+      index: '0',
+      parameters: [{ type: 'text', text: buttonUrlParam }],
+    })
+  }
+  if (components.length > 0) {
+    template.components = components
   }
 
   const body: Record<string, unknown> = {

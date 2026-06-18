@@ -256,6 +256,114 @@ E mais importante: o cliente recebe no WhatsApp. 🎯
   iniciada. Aproximadamente R$ 0,08–0,15 por conversa no Brasil
   (consulta tabela atual da Meta).
 
+## Magic Login (SmartCheckout / Loja5)
+
+Quando o cliente solicita um **link de acesso rápido** (recuperação
+de senha via magic link) o tema Loja5/SmartCheckout dispara um
+webhook custom. O WaCRM expõe um endpoint dedicado pra recebê-lo e
+encaminhar pra uma automation com botão URL dinâmico no template.
+
+### Endpoint
+
+```
+POST https://crm.auroralabs.com.br/api/integrations/woocommerce/magic-login
+  ?user_id=<SEU_USER_ID>&token=<MESMO webhook_secret>
+```
+
+Use o **mesmo `webhook_secret`** que está em Configurações →
+WooCommerce. Diferente do webhook principal do WC (que tem HMAC), este
+endpoint valida o secret via query string porque o hook do tema não
+assina os requests.
+
+### Configuração no WordPress (theme/plugin)
+
+No `functions.php` (ou onde você dispara o webhook hoje), troca a URL
+de destino pelo endpoint do WaCRM:
+
+```php
+$wacrm_webhook = 'https://crm.auroralabs.com.br/api/integrations/woocommerce/magic-login'
+    . '?user_id=' . SEU_USER_ID
+    . '&token=' . SEU_WEBHOOK_SECRET;
+
+wp_remote_post( $wacrm_webhook, [
+    'headers' => [ 'Content-Type' => 'application/json' ],
+    'body'    => wp_json_encode( [
+        'url'  => $magic_url,        // ex: https://dly.com.br/wc-api/smart-checkout/login/?uid=3&magic_login=ABC
+        'user' => [
+            'id'         => $user_id,
+            'username'   => $username,
+            'email'      => $email,
+            'phone'      => $phone,
+            'first_name' => $first_name,
+        ],
+    ] ),
+    'timeout'  => 5,
+    'blocking' => false,
+] );
+```
+
+### Cria a template HSM no Meta com botão URL dinâmico
+
+Meta Business Manager → **WhatsApp Manager → Templates → Create**:
+
+1. **Category:** Utility
+2. **Language:** Portuguese (BR) — `pt_BR`
+3. **Name:** `magic_login_access` (qualquer slug)
+4. **Body:**
+   ```
+   Olá *{{1}}*! 👋
+   
+   Recebemos sua solicitação de acesso rápido na DLY.
+   Toque no botão abaixo para entrar direto na sua conta (válido por 15 minutos).
+   ```
+5. **Buttons → Add button:**
+   - Type: **URL**
+   - Button text: `Acessar minha conta`
+   - URL type: **Dynamic**
+   - Base URL: `https://dly.com.br/wc-api/smart-checkout/login/`
+   - Sample URL: cola a URL completa de um exemplo (ex:
+     `https://dly.com.br/wc-api/smart-checkout/login/?uid=1&magic_login=sample`)
+6. **Submit for review** → espera approved (~5-30 min)
+
+### Cria a automação no WaCRM
+
+1. Sincroniza templates: Configurações → Modelos → **Sincronizar**
+2. **Automações → Nova:**
+   - **Nome:** `Magic Login → WhatsApp`
+   - **Trigger:** `Magic Login Solicitado`
+   - **Active** → ON
+3. **Adiciona step:** `Enviar Modelo`
+   - Template: `magic_login_access` (pt_BR)
+   - Variável `{{1}}`: `{{customer.first_name}}`
+   - **Sufixo do botão URL:** `{{magic_login.suffix}}` ← campo novo
+4. **Salva**
+
+Próxima vez que um cliente solicitar magic link, o WP dispara o webhook,
+o WaCRM cria/encontra o contato, executa a automação e o cliente recebe
+o WhatsApp com botão "Acessar minha conta" — tap = login direto.
+
+### Variáveis disponíveis no contexto magic-login
+
+| Placeholder | Valor |
+| --- | --- |
+| `{{magic_login.url}}` | URL completa (ex: `https://dly.com.br/wc-api/smart-checkout/login/?uid=3&magic_login=ABC`) |
+| `{{magic_login.suffix}}` | Só a query string (ex: `?uid=3&magic_login=ABC`) — use no sufixo do botão Dynamic |
+| `{{magic_login.uid}}` | `3` |
+| `{{magic_login.token}}` | `ABC` (valor do param `magic_login`) |
+| `{{customer.first_name}}` | `Junior` |
+| `{{customer.name}}` | nome completo (montado a partir de first_name + last_name) |
+| `{{customer.phone}}`, `{{customer.email}}` | os do payload |
+
+### Por que dois esquemas (HMAC no webhook principal, token query string aqui)?
+
+O webhook principal `/woocommerce/webhook` é criado pelo WC nativo, que
+assina cada POST com `x-wc-webhook-signature` (HMAC-SHA256 + secret).
+O hook custom do tema (magic login) não usa essa pipeline — é um
+`wp_remote_post` direto. Pra não te obrigar a escrever HMAC em PHP no
+tema, esse endpoint aceita o mesmo secret na query string, validado
+com `crypto.timingSafeEqual` no Node. Mesmo nível de segurança que um
+HMAC pré-imagem desde que o secret não vaze.
+
 ## TODO — Fase 2 (UI)
 
 - Builder de automation no painel mostrando os triggers `order_*`
