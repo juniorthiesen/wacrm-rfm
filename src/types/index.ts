@@ -266,6 +266,11 @@ export type AutomationTriggerType =
   // contacts.birthday matches today (month + day). See
   // src/app/api/automations/birthday-cron/route.ts.
   | 'birthday'
+  // Fires once per year, on the FIRST day of each contact's birth
+  // month — letting the operator send a month-long coupon ahead of
+  // the actual greeting. Idempotency via
+  // contacts.last_birthday_month_greeting.
+  | 'birthday_month'
   // E-commerce / WooCommerce order lifecycle. Triggered by the
   // WooCommerce webhook on a status transition (not on every upsert).
   // See src/app/api/integrations/woocommerce/webhook/route.ts and

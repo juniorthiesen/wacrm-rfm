@@ -5,14 +5,21 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine'
 /**
  * Daily birthday dispatch.
  *
- * For every tenant that has an active `birthday` automation, finds the
- * contacts whose contacts.birthday matches today (month + day, in BRT),
- * claims each one, and fires `runAutomationsForTrigger('birthday', …)` so
- * the operator's own automation steps run (typically a send_template
- * birthday greeting, optionally followed by a coupon).
+ * Two parallel flows fire from the same cron — the trigger row each
+ * tenant has decides which one runs for them:
+ *
+ *   1. `birthday`        — fires on the contact's actual birthday
+ *                          (matched on month + day, BRT). Once-per-year
+ *                          via contacts.last_birthday_greeting.
+ *   2. `birthday_month`  — fires once per year for every contact whose
+ *                          birth MONTH equals the current month, the
+ *                          first time the cron sees them in that month.
+ *                          Lets the operator send a "your month is on"
+ *                          coupon ahead of the actual birthday. Once-
+ *                          per-year via contacts.last_birthday_month_greeting.
  *
  * Idempotency: each contact is claimed with a conditional UPDATE on
- * last_birthday_greeting before dispatch, so overlapping invocations
+ * the dedupe column before dispatch, so overlapping invocations
  * (Vercel Cron + an external pinger) never double-send, and a timeout
  * never burns a birthday — unclaimed rows are picked up on the next run.
  *
@@ -52,72 +59,152 @@ export async function GET(request: Request) {
   const admin = supabaseAdmin()
   const today = todayInSaoPaulo()
 
-  // Only tenants with an active birthday automation do any work — no point
-  // scanning (or claiming) contacts for a tenant that wouldn't send.
+  // One query picks up both trigger types — we then split per-user so
+  // a tenant that only enabled the month message doesn't pay for the
+  // day-of scan and vice versa.
   const { data: autos, error: autosErr } = await admin
     .from('automations')
-    .select('user_id')
-    .eq('trigger_type', 'birthday')
+    .select('user_id, trigger_type')
+    .in('trigger_type', ['birthday', 'birthday_month'])
     .eq('is_active', true)
   if (autosErr) {
     return NextResponse.json({ error: autosErr.message }, { status: 500 })
   }
 
-  const userIds = [...new Set((autos ?? []).map((a) => a.user_id as string))]
-  const summary: Array<{ user_id: string; fired: number; skipped: number }> = []
+  const dayUsers = new Set<string>()
+  const monthUsers = new Set<string>()
+  for (const a of autos ?? []) {
+    if (a.trigger_type === 'birthday') dayUsers.add(a.user_id as string)
+    if (a.trigger_type === 'birthday_month') monthUsers.add(a.user_id as string)
+  }
+  const allUsers = new Set<string>([...dayUsers, ...monthUsers])
+
+  const summary: Array<{
+    user_id: string
+    day_fired: number
+    day_skipped: number
+    month_fired: number
+    month_skipped: number
+  }> = []
   let totalFired = 0
 
-  for (const userId of userIds) {
+  for (const userId of allUsers) {
     if (totalFired >= MAX_PER_RUN) break
+    let day_fired = 0
+    let day_skipped = 0
+    let month_fired = 0
+    let month_skipped = 0
 
-    const { data: candidates, error: candErr } = await admin.rpc(
-      'birthday_contacts_today',
-      { p_user_id: userId, p_today: today, p_limit: MAX_PER_RUN },
-    )
-    if (candErr) {
-      console.error(`[birthday-cron] tenant ${userId} query failed:`, candErr)
-      summary.push({ user_id: userId, fired: 0, skipped: 0 })
-      continue
-    }
+    // ---- 1. Day-of birthday ----
+    if (dayUsers.has(userId) && totalFired < MAX_PER_RUN) {
+      const { data: candidates, error: candErr } = await admin.rpc(
+        'birthday_contacts_today',
+        { p_user_id: userId, p_today: today, p_limit: MAX_PER_RUN },
+      )
+      if (candErr) {
+        console.error(`[birthday-cron] day query failed for ${userId}:`, candErr)
+      } else {
+        for (const c of candidates ?? []) {
+          if (totalFired >= MAX_PER_RUN) break
+          const contactId = c.contact_id as string
 
-    let fired = 0
-    let skipped = 0
-    for (const c of candidates ?? []) {
-      if (totalFired >= MAX_PER_RUN) break
-      const contactId = c.contact_id as string
+          // Claim by flipping last_birthday_greeting to today.
+          const { data: claimed } = await admin
+            .from('contacts')
+            .update({ last_birthday_greeting: today })
+            .eq('id', contactId)
+            .or(`last_birthday_greeting.is.null,last_birthday_greeting.lt.${today}`)
+            .select('id')
+            .maybeSingle()
+          if (!claimed) {
+            day_skipped++
+            continue
+          }
 
-      // Claim: only the run that flips last_birthday_greeting to today
-      // proceeds. A concurrent run (or a re-run) gets no row back.
-      const { data: claimed } = await admin
-        .from('contacts')
-        .update({ last_birthday_greeting: today })
-        .eq('id', contactId)
-        .or(`last_birthday_greeting.is.null,last_birthday_greeting.lt.${today}`)
-        .select('id')
-        .maybeSingle()
-      if (!claimed) {
-        skipped++
-        continue
+          const name = (c.contact_name as string | null) ?? null
+          await runAutomationsForTrigger({
+            userId,
+            triggerType: 'birthday',
+            contactId,
+            context: {
+              customer: {
+                name: name ?? undefined,
+                first_name: firstNameOf(name),
+              },
+            },
+          })
+          day_fired++
+          totalFired++
+        }
       }
-
-      const name = (c.contact_name as string | null) ?? null
-      await runAutomationsForTrigger({
-        userId,
-        triggerType: 'birthday',
-        contactId,
-        context: {
-          customer: {
-            name: name ?? undefined,
-            first_name: firstNameOf(name),
-          },
-        },
-      })
-      fired++
-      totalFired++
     }
 
-    summary.push({ user_id: userId, fired, skipped })
+    // ---- 2. Month-of birthday ----
+    // Same shape as the day-of path, just a different RPC + dedupe column.
+    if (monthUsers.has(userId) && totalFired < MAX_PER_RUN) {
+      const { data: candidates, error: candErr } = await admin.rpc(
+        'birthday_month_contacts_today',
+        { p_user_id: userId, p_today: today, p_limit: MAX_PER_RUN },
+      )
+      if (candErr) {
+        console.error(
+          `[birthday-cron] month query failed for ${userId}:`,
+          candErr,
+        )
+      } else {
+        // Claim only contacts whose last_birthday_month_greeting is
+        // older than the start of the current year. Storing the date
+        // means we can re-run safely every day in the month — only the
+        // first claim of the year succeeds.
+        const yearStart = `${today.slice(0, 4)}-01-01`
+        for (const c of candidates ?? []) {
+          if (totalFired >= MAX_PER_RUN) break
+          const contactId = c.contact_id as string
+
+          const { data: claimed } = await admin
+            .from('contacts')
+            .update({ last_birthday_month_greeting: today })
+            .eq('id', contactId)
+            .or(
+              `last_birthday_month_greeting.is.null,last_birthday_month_greeting.lt.${yearStart}`,
+            )
+            .select('id')
+            .maybeSingle()
+          if (!claimed) {
+            month_skipped++
+            continue
+          }
+
+          const name = (c.contact_name as string | null) ?? null
+          await runAutomationsForTrigger({
+            userId,
+            triggerType: 'birthday_month',
+            contactId,
+            context: {
+              customer: {
+                name: name ?? undefined,
+                first_name: firstNameOf(name),
+              },
+            },
+          })
+          month_fired++
+          totalFired++
+        }
+      }
+    }
+
+    summary.push({
+      user_id: userId,
+      day_fired,
+      day_skipped,
+      month_fired,
+      month_skipped,
+    })
   }
 
-  return NextResponse.json({ date: today, tenants: userIds.length, summary })
+  return NextResponse.json({
+    date: today,
+    tenants: allUsers.size,
+    summary,
+  })
 }

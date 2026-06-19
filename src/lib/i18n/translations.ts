@@ -718,7 +718,8 @@ export const translations = {
         order_refunded: "Order Refunded",
         order_failed: "Order Failed",
         customer_magic_login_requested: "Magic Login Requested",
-        cart_abandoned: "Cart Abandoned"
+        cart_abandoned: "Cart Abandoned",
+        birthday_month: "Birthday Month"
       },
       triggerHints: {
         new_message_received: "Any incoming message",
@@ -737,7 +738,8 @@ export const translations = {
         order_refunded: "Refund issued for the order",
         order_failed: "Payment failed for the order",
         customer_magic_login_requested: "Customer requested a quick-access / magic-login link (SmartCheckout / Loja5). Use {{magic_login.suffix}} for the dynamic URL button.",
-        cart_abandoned: "Customer abandoned the cart at checkout (Funnelkit / BuildwooFunnels). Use {{cart.checkout_url_suffix}} for the dynamic URL button to bring them back to the cart."
+        cart_abandoned: "Customer abandoned the cart at checkout (Funnelkit / BuildwooFunnels). Use {{cart.checkout_url_suffix}} for the dynamic URL button to bring them back to the cart.",
+        birthday_month: "First day of the contact's birth month (checked daily). Fires once per year so you can send a month-long coupon ahead of the actual birthday greeting."
       },
       stepMeta: {
         send_message: "Send Message",
@@ -2077,7 +2079,8 @@ export const translations = {
         order_refunded: "Pedido Reembolsado",
         order_failed: "Pedido Falhou",
         customer_magic_login_requested: "Magic Login Solicitado",
-        cart_abandoned: "Carrinho Abandonado"
+        cart_abandoned: "Carrinho Abandonado",
+        birthday_month: "Mês de Aniversário"
       },
       triggerHints: {
         new_message_received: "Qualquer mensagem recebida",
@@ -2096,7 +2099,8 @@ export const translations = {
         order_refunded: "Reembolso emitido para o pedido",
         order_failed: "Pagamento falhou no pedido",
         customer_magic_login_requested: "Cliente pediu link de acesso rápido (SmartCheckout / Loja5). Use {{magic_login.suffix}} no botão dinâmico do modelo.",
-        cart_abandoned: "Cliente abandonou o checkout (Funnelkit / BuildwooFunnels). Use {{cart.checkout_url_suffix}} no botão dinâmico pra trazer ele de volta ao carrinho."
+        cart_abandoned: "Cliente abandonou o checkout (Funnelkit / BuildwooFunnels). Use {{cart.checkout_url_suffix}} no botão dinâmico pra trazer ele de volta ao carrinho.",
+        birthday_month: "Primeiro dia do mês de aniversário do contato (verificado diariamente). Dispara 1x por ano — útil pra enviar cupom de aniversário válido pelo mês todo, antes do parabéns no dia."
       },
       stepMeta: {
         send_message: "Enviar Mensagem",
