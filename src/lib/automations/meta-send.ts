@@ -105,6 +105,23 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   const accessToken = decrypt(config.access_token)
 
+  // Resolve the template's language from the local message_templates table.
+  // The step config may have the builder default ('en_US') even when the
+  // template was approved in pt_BR — using the wrong code causes Meta
+  // error #132001 ("Template name does not exist in the translation").
+  // The DB record is the source of truth for which language Meta approved.
+  let resolvedLanguage = input.kind === 'template' ? (input.language ?? undefined) : undefined
+  if (input.kind === 'template') {
+    const { data: tplRow } = await db
+      .from('message_templates')
+      .select('language')
+      .eq('user_id', input.userId)
+      .eq('name', input.templateName)
+      .limit(1)
+      .maybeSingle()
+    if (tplRow?.language) resolvedLanguage = tplRow.language as string
+  }
+
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
       const r = await sendTemplateMessage({
@@ -112,7 +129,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         accessToken,
         to: phone,
         templateName: input.templateName,
-        language: input.language,
+        language: resolvedLanguage,
         // Sanitize so multi-line values (e.g. items_list) don't trip
         // Meta's "(#100) Invalid parameter" on template variables.
         params: input.params?.map(sanitizeTemplateParam),
@@ -204,7 +221,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       db,
       input.userId,
       input.templateName,
-      input.language,
+      resolvedLanguage,
       input.params ?? [],
     )
   }
