@@ -31,6 +31,34 @@ export interface AutomationContext {
   /** The tag id that was added, for tag_added trigger. */
   tag_id?: string
   /**
+   * Magic-login context — populated by the SmartCheckout / Loja5
+   * password-recovery webhook. `url` is the full short link, `suffix`
+   * is the query-string portion ready to drop into a Meta dynamic-URL
+   * button suffix. `uid` / `token` are the parsed parts for users
+   * who prefer to compose their own suffix.
+   */
+  magic_login?: {
+    url?: string
+    suffix?: string
+    uid?: string
+    token?: string
+    [key: string]: unknown
+  }
+  /**
+   * Cart-abandonment context — populated by Funnelkit / BuildwooFunnels
+   * Cart Abandonment Recovery webhooks posting multipart/form-data.
+   * `checkout_url` includes the recovery token so the button drops the
+   * customer back into their abandoned cart pre-filled.
+   */
+  cart?: {
+    checkout_url?: string
+    checkout_url_suffix?: string
+    coupon_code?: string
+    total?: string
+    product_names?: string
+    [key: string]: unknown
+  }
+  /**
    * E-commerce order context — populated by external-platform webhooks
    * (e.g. WooCommerce) when firing the `order_*` family of triggers.
    * Used to interpolate `{{order.X}}` and `{{customer.X}}` placeholders
@@ -364,6 +392,9 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
             // the customer would see the literal placeholder text.
             .map((k) => interpolate(String(cfg.variables![k]), args))
         : []
+      const buttonUrlParam = cfg.button_url_param
+        ? interpolate(cfg.button_url_param, args)
+        : undefined
       const { whatsapp_message_id } = await engineSendTemplate({
         userId: args.automation.user_id,
         conversationId,
@@ -371,6 +402,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         templateName: cfg.template_name,
         language: cfg.language,
         params,
+        buttonUrlParam,
       })
       return `template sent via Meta (${whatsapp_message_id})`
     }
@@ -584,6 +616,14 @@ function interpolate(s: string, args: ExecuteArgs): string {
     }
     if (ns === 'customer' && prop) {
       const v = args.context.customer?.[prop]
+      return v == null ? '' : String(v)
+    }
+    if (ns === 'magic_login' && prop) {
+      const v = args.context.magic_login?.[prop]
+      return v == null ? '' : String(v)
+    }
+    if (ns === 'cart' && prop) {
+      const v = args.context.cart?.[prop]
       return v == null ? '' : String(v)
     }
     return ''

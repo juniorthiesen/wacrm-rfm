@@ -662,7 +662,9 @@ export const translations = {
         templateManualLabel: "Or type the name manually",
         templateVariablesLabel: "Variables",
         templateNoVariables: "This template has no variables.",
-        templateVariableHelp: "Use {{customer.name}}, {{customer.first_name}}, {{order.number}}, {{order.total}}, {{order.pix_code}}, {{order.tracking_code}}, {{order.items_list}}, {{vars.X}} or {{message.text}} as dynamic placeholders.",
+        templateButtonUrlLabel: "URL button suffix (optional)",
+        templateButtonUrlHelp: "Only set this for templates whose URL button is configured as Dynamic in Meta Business Manager. The value here is appended to the button's Base URL. Use {{magic_login.suffix}} for the SmartCheckout magic-link flow.",
+        templateVariableHelp: "Use {{customer.name}}, {{customer.first_name}}, {{order.number}}, {{order.total}}, {{order.pix_code}}, {{order.tracking_code}}, {{order.items_list}}, {{magic_login.url}}, {{magic_login.suffix}}, {{cart.checkout_url}}, {{cart.coupon_code}}, {{cart.product_names}}, {{vars.X}} or {{message.text}} as dynamic placeholders.",
         templateTestLabel: "Send test",
         templateTestButton: "Send",
         templateTestWarning: "This sends a real message via Meta and is billed. Variables are sent literally — fill in sample values to preview them.",
@@ -707,13 +709,16 @@ export const translations = {
         conversation_assigned: "Conversation Assigned",
         tag_added: "Tag Added",
         time_based: "Time-Based",
+        birthday: "Birthday",
         order_received: "Order Received",
         order_paid: "Order Paid",
         order_in_separation: "Order in Separation",
         order_shipped: "Order Shipped",
         order_cancelled: "Order Cancelled",
         order_refunded: "Order Refunded",
-        order_failed: "Order Failed"
+        order_failed: "Order Failed",
+        customer_magic_login_requested: "Magic Login Requested",
+        cart_abandoned: "Cart Abandoned"
       },
       triggerHints: {
         new_message_received: "Any incoming message",
@@ -723,13 +728,16 @@ export const translations = {
         conversation_assigned: "When assigned to an agent",
         tag_added: "When a tag is added to a contact",
         time_based: "On a recurring schedule",
+        birthday: "On the contact's birthday (checked daily). Needs contacts.birthday set — synced from the WooCommerce checkout. Use a send_template step (Meta requires an approved template outside the 24h window).",
         order_received: "Order created or awaiting payment (status: pending / on-hold) — PIX code is exposed as {{order.pix_code}} when the gateway provides it",
         order_paid: "Payment confirmed for an order (status: processing)",
         order_in_separation: "Order moved to picking / fulfilment (custom WC status: separacao)",
         order_shipped: "Order fulfilled / completed in the store (status: completed or enviado)",
         order_cancelled: "Order cancelled by customer or store admin",
         order_refunded: "Refund issued for the order",
-        order_failed: "Payment failed for the order"
+        order_failed: "Payment failed for the order",
+        customer_magic_login_requested: "Customer requested a quick-access / magic-login link (SmartCheckout / Loja5). Use {{magic_login.suffix}} for the dynamic URL button.",
+        cart_abandoned: "Customer abandoned the cart at checkout (Funnelkit / BuildwooFunnels). Use {{cart.checkout_url_suffix}} for the dynamic URL button to bring them back to the cart."
       },
       stepMeta: {
         send_message: "Send Message",
@@ -2018,7 +2026,9 @@ export const translations = {
         templateManualLabel: "Ou digite o nome manualmente",
         templateVariablesLabel: "Variáveis",
         templateNoVariables: "Este modelo não tem variáveis.",
-        templateVariableHelp: "Use {{customer.name}}, {{customer.first_name}}, {{order.number}}, {{order.total}}, {{order.pix_code}}, {{order.tracking_code}}, {{order.items_list}}, {{vars.X}} ou {{message.text}} como placeholders dinâmicos.",
+        templateButtonUrlLabel: "Sufixo do botão URL (opcional)",
+        templateButtonUrlHelp: "Só preencha quando o botão URL do modelo estiver configurado como Dinâmico no Meta Business Manager. O valor aqui é anexado ao Base URL do botão. Use {{magic_login.suffix}} para o fluxo de magic link do SmartCheckout.",
+        templateVariableHelp: "Use {{customer.name}}, {{customer.first_name}}, {{order.number}}, {{order.total}}, {{order.pix_code}}, {{order.tracking_code}}, {{order.items_list}}, {{magic_login.url}}, {{magic_login.suffix}}, {{cart.checkout_url}}, {{cart.coupon_code}}, {{cart.product_names}}, {{vars.X}} ou {{message.text}} como placeholders dinâmicos.",
         tagIdLabel: "ID da etiqueta",
         modeLabel: "Modo",
         roundRobinOption: "Distribuição (Round-robin)",
@@ -2058,13 +2068,16 @@ export const translations = {
         conversation_assigned: "Conversa Atribuída",
         tag_added: "Etiqueta Adicionada",
         time_based: "Baseado em Tempo",
+        birthday: "Aniversário",
         order_received: "Pedido Recebido",
         order_paid: "Pagamento Aprovado",
         order_in_separation: "Pedido em Separação",
         order_shipped: "Pedido Enviado",
         order_cancelled: "Pedido Cancelado",
         order_refunded: "Pedido Reembolsado",
-        order_failed: "Pedido Falhou"
+        order_failed: "Pedido Falhou",
+        customer_magic_login_requested: "Magic Login Solicitado",
+        cart_abandoned: "Carrinho Abandonado"
       },
       triggerHints: {
         new_message_received: "Qualquer mensagem recebida",
@@ -2074,13 +2087,16 @@ export const translations = {
         conversation_assigned: "Quando atribuído a um atendente",
         tag_added: "Quando uma etiqueta é adicionada a um contato",
         time_based: "Em um agendamento recorrente",
+        birthday: "No aniversário do contato (verificado diariamente). Requer contacts.birthday preenchido — vem do checkout do WooCommerce. Use um passo Enviar Modelo (a Meta exige template aprovado fora da janela de 24h).",
         order_received: "Pedido criado ou aguardando pagamento (pending / on-hold) — o código PIX vira {{order.pix_code}} quando o gateway envia",
         order_paid: "Pagamento confirmado (processing)",
         order_in_separation: "Pedido em separação / preparação (status custom: separacao)",
         order_shipped: "Pedido despachado (completed ou enviado)",
         order_cancelled: "Pedido cancelado pelo cliente ou admin",
         order_refunded: "Reembolso emitido para o pedido",
-        order_failed: "Pagamento falhou no pedido"
+        order_failed: "Pagamento falhou no pedido",
+        customer_magic_login_requested: "Cliente pediu link de acesso rápido (SmartCheckout / Loja5). Use {{magic_login.suffix}} no botão dinâmico do modelo.",
+        cart_abandoned: "Cliente abandonou o checkout (Funnelkit / BuildwooFunnels). Use {{cart.checkout_url_suffix}} no botão dinâmico pra trazer ele de volta ao carrinho."
       },
       stepMeta: {
         send_message: "Enviar Mensagem",

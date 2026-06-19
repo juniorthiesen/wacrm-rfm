@@ -34,6 +34,12 @@ export interface RunAgentInput {
   query: string
   /** Optional — used only for the run log, so we can attribute later. */
   contact_id?: string | null
+  /**
+   * Formatted customer context (name, tags, recent orders) injected
+   * into the system prompt so the agent can reference order history
+   * without needing tool-calling.
+   */
+  customerContext?: string | null
 }
 
 export interface RunAgentResult {
@@ -71,6 +77,7 @@ export class AgentNotConfiguredError extends Error {
 export function buildSystemPrompt(
   agentInstructions: string,
   matches: KnowledgeMatch[],
+  customerContext?: string | null,
 ): string {
   const guardrail = [
     '',
@@ -81,29 +88,25 @@ export function buildSystemPrompt(
     'Reply in the same language the customer used. Be concise.',
   ].join('\n')
 
-  if (matches.length === 0) {
-    return [
-      agentInstructions.trim(),
-      guardrail,
-      '',
-      'KNOWLEDGE BASE: (empty for this question)',
-    ].join('\n')
+  const parts: string[] = [agentInstructions.trim(), guardrail]
+
+  if (customerContext) {
+    parts.push('', 'CUSTOMER CONTEXT (use to personalise the reply):', customerContext)
   }
 
-  const kb = matches
-    .map(
-      (m, i) =>
-        `[${i + 1}] ${m.title}\n${m.content}\n(similarity: ${m.similarity.toFixed(3)})`,
-    )
-    .join('\n\n')
+  if (matches.length === 0) {
+    parts.push('', 'KNOWLEDGE BASE: (empty for this question)')
+  } else {
+    const kb = matches
+      .map(
+        (m, i) =>
+          `[${i + 1}] ${m.title}\n${m.content}\n(similarity: ${m.similarity.toFixed(3)})`,
+      )
+      .join('\n\n')
+    parts.push('', 'KNOWLEDGE BASE (top matches for the customer\'s message):', kb)
+  }
 
-  return [
-    agentInstructions.trim(),
-    guardrail,
-    '',
-    'KNOWLEDGE BASE (top matches for the customer\'s message):',
-    kb,
-  ].join('\n')
+  return parts.join('\n')
 }
 
 /**
@@ -139,7 +142,7 @@ export async function runAgent(
   const messages: AiChatMessage[] = [
     {
       role: 'system',
-      content: buildSystemPrompt(agent.system_prompt, matches),
+      content: buildSystemPrompt(agent.system_prompt, matches, input.customerContext),
     },
     { role: 'user', content: query },
   ]

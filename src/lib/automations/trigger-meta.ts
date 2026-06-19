@@ -35,6 +35,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Time-Based',
     pillClass: 'border-slate-500/30 bg-slate-500/10 text-slate-300',
   },
+  birthday: {
+    label: 'Aniversário',
+    pillClass: 'border-pink-500/30 bg-pink-500/10 text-pink-300',
+  },
   order_received: {
     label: 'Pedido Recebido',
     pillClass: 'border-orange-500/30 bg-orange-500/10 text-orange-300',
@@ -62,6 +66,14 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
   order_failed: {
     label: 'Pedido Falhou',
     pillClass: 'border-red-500/30 bg-red-500/10 text-red-300',
+  },
+  customer_magic_login_requested: {
+    label: 'Magic Login Solicitado',
+    pillClass: 'border-yellow-500/30 bg-yellow-500/10 text-yellow-300',
+  },
+  cart_abandoned: {
+    label: 'Carrinho Abandonado',
+    pillClass: 'border-pink-500/30 bg-pink-500/10 text-pink-300',
   },
 }
 

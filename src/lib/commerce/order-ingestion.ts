@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/lib/integrations/phone-normalization";
 import { normalizeLineItems } from "./line-items";
-import type { CommercePlatform } from "./types";
+import { deriveCategories } from "./category-tags";
+import { parseBirthday } from "./birthday";
+import type { CommercePlatform, NormalizedLineItem } from "./types";
 
 // Shared shape of a normalized order across platforms — both the webhook
 // and the REST-API sync call this with their own payloads pre-normalized.
@@ -19,6 +21,9 @@ export interface NormalizedOrder {
     last_name: string | null;
     phone_raw: string | null; // pre-normalization
     email: string | null;
+    /** Raw birthday string from the checkout, pre-parsing. Optional —
+     *  most platforms don't carry it. */
+    birthday?: string | null;
   };
   line_items_raw: unknown; // passed through normalizeLineItems
   platform: CommercePlatform;
@@ -76,10 +81,55 @@ export async function findContactByPhoneOrEmail(
 }
 
 /**
+ * Find-or-create a tag by name and return its id. There is no UNIQUE
+ * constraint on tags(user_id, name) (see migration 001), so this mirrors
+ * the read-then-insert pattern used elsewhere; a concurrent create is the
+ * accepted, pre-existing trade-off.
+ */
+async function ensureTag(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: SupabaseClient<any>,
+  userId: string,
+  name: string,
+  color: string,
+): Promise<string | null> {
+  const { data: existing } = await db
+    .from("tags")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("name", name)
+    .maybeSingle();
+  if (existing?.id) return existing.id as string;
+
+  const { data: created } = await db
+    .from("tags")
+    .insert({ user_id: userId, name, color })
+    .select("id")
+    .single();
+  return (created?.id as string | undefined) ?? null;
+}
+
+/**
+ * Attach a tag to a contact. Idempotent — the duplicate insert fails
+ * silently on the contact_tags UNIQUE(contact_id, tag_id) constraint, so
+ * already-tagged contacts don't surface as an error.
+ */
+async function tagContact(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: SupabaseClient<any>,
+  contactId: string,
+  tagId: string,
+): Promise<void> {
+  await db
+    .from("contact_tags")
+    .insert({ contact_id: contactId, tag_id: tagId })
+    .select()
+    .maybeSingle();
+}
+
+/**
  * Assign the platform tag (e.g. "WooCommerce") to a contact, creating the
- * tag if missing. Idempotent — safe to call on already-tagged contacts;
- * the duplicate insert will fail silently on the contact_tags UNIQUE
- * constraint.
+ * tag if missing. Idempotent.
  */
 export async function assignPlatformTag(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,35 +138,40 @@ export async function assignPlatformTag(
   contactId: string,
   platform: CommercePlatform,
 ): Promise<void> {
-  const name = PLATFORM_TAG_NAMES[platform];
-  const color = PLATFORM_TAG_COLORS[platform];
+  const tagId = await ensureTag(
+    db,
+    userId,
+    PLATFORM_TAG_NAMES[platform],
+    PLATFORM_TAG_COLORS[platform],
+  );
+  if (tagId) await tagContact(db, contactId, tagId);
+}
 
-  const { data: existingTag } = await db
-    .from("tags")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("name", name)
-    .maybeSingle();
-
-  let tagId: string | null = existingTag?.id ?? null;
-  if (!tagId) {
-    const { data: newTag } = await db
-      .from("tags")
-      .insert({ user_id: userId, name, color })
-      .select("id")
-      .single();
-    tagId = newTag?.id ?? null;
+/**
+ * Tag a contact with the purchase categories of an order's line items
+ * (e.g. "🛍️ Sutiã", "🛍️ Kit") so cross-sell broadcasts can target them
+ * by tag. Tags accumulate across orders and never get removed here — once
+ * a customer has bought a category, they stay in that audience. Idempotent.
+ *
+ * Returns the labels actually assigned (for logging/diagnostics).
+ */
+export async function assignCategoryTags(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: SupabaseClient<any>,
+  userId: string,
+  contactId: string,
+  lineItems: NormalizedLineItem[],
+): Promise<string[]> {
+  const categories = deriveCategories(lineItems);
+  const assigned: string[] = [];
+  for (const cat of categories) {
+    const tagId = await ensureTag(db, userId, cat.label, cat.color);
+    if (tagId) {
+      await tagContact(db, contactId, tagId);
+      assigned.push(cat.label);
+    }
   }
-
-  if (tagId) {
-    await db
-      .from("contact_tags")
-      .insert({ contact_id: contactId, tag_id: tagId })
-      // Suppress unique violation — already-tagged contacts shouldn't
-      // surface as an error.
-      .select()
-      .maybeSingle();
-  }
+  return assigned;
 }
 
 /**
@@ -179,6 +234,19 @@ export async function ingestOrder(
     }
   }
 
+  // Persist birthday from the checkout when we have one and the contact
+  // doesn't already have it — never overwrite a value set manually or by
+  // an earlier order. The `.is('birthday', null)` guard makes this safe
+  // to run on every ingest.
+  const birthdayIso = parseBirthday(order.customer.birthday);
+  if (birthdayIso && contact?.id) {
+    await db
+      .from("contacts")
+      .update({ birthday: birthdayIso })
+      .eq("id", contact.id)
+      .is("birthday", null);
+  }
+
   // Status-transition detection: lets the webhook decide whether to fire
   // automations. Sync doesn't care, but reads it for free.
   const { data: previousOrder } = await db
@@ -215,6 +283,18 @@ export async function ingestOrder(
   if (orderError) {
     console.error("[order-ingestion] Failed to upsert order:", orderError);
     throw new Error(orderError.message);
+  }
+
+  // Project the order's products onto contact tags (e.g. "🛍️ Sutiã") so
+  // cross-sell campaigns can target by purchase category. Best-effort: a
+  // tagging failure must not fail ingestion, or the webhook would 500 and
+  // WooCommerce would retry the entire event.
+  if (contact?.id && lineItems.length > 0) {
+    try {
+      await assignCategoryTags(db, userId, contact.id, lineItems);
+    } catch (err) {
+      console.error("[order-ingestion] Failed to assign category tags:", err);
+    }
   }
 
   return {

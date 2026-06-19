@@ -256,6 +256,207 @@ E mais importante: o cliente recebe no WhatsApp. 🎯
   iniciada. Aproximadamente R$ 0,08–0,15 por conversa no Brasil
   (consulta tabela atual da Meta).
 
+## Magic Login (SmartCheckout / Loja5)
+
+Quando o cliente solicita um **link de acesso rápido** (recuperação
+de senha via magic link) o tema Loja5/SmartCheckout dispara um
+webhook custom. O WaCRM expõe um endpoint dedicado pra recebê-lo e
+encaminhar pra uma automation com botão URL dinâmico no template.
+
+### Endpoint
+
+Reaproveita **a mesma URL** do webhook principal — não precisa criar
+endpoint separado:
+
+```
+POST https://crm.auroralabs.com.br/api/integrations/woocommerce/webhook
+  ?user_id=<SEU_USER_ID>&token=<MESMO webhook_secret>
+```
+
+Como dispatch o endpoint distingue:
+
+- **Payload com `id` + `status`** → trata como evento de pedido (HMAC
+  via header `x-wc-webhook-signature`, padrão WC)
+- **Payload com `url` + `user`** (sem `id` no topo) → trata como
+  magic-login (auth via `?token=` query string, padrão hook custom)
+
+Mesmo `webhook_secret` em Configurações → WooCommerce, só varia o
+transporte (header HMAC vs query token) conforme o que cada origem
+consegue assinar.
+
+### Configuração no WordPress (theme/plugin)
+
+No `functions.php` (ou onde você dispara o webhook hoje), troca a URL
+de destino pelo endpoint do WaCRM:
+
+```php
+$wacrm_webhook = 'https://crm.auroralabs.com.br/api/integrations/woocommerce/webhook'
+    . '?user_id=' . SEU_USER_ID
+    . '&token=' . SEU_WEBHOOK_SECRET;
+
+wp_remote_post( $wacrm_webhook, [
+    'headers' => [ 'Content-Type' => 'application/json' ],
+    'body'    => wp_json_encode( [
+        'url'  => $magic_url,        // ex: https://dly.com.br/wc-api/smart-checkout/login/?uid=3&magic_login=ABC
+        'user' => [
+            'id'         => $user_id,
+            'username'   => $username,
+            'email'      => $email,
+            'phone'      => $phone,
+            'first_name' => $first_name,
+        ],
+    ] ),
+    'timeout'  => 5,
+    'blocking' => false,
+] );
+```
+
+### Cria a template HSM no Meta com botão URL dinâmico
+
+Meta Business Manager → **WhatsApp Manager → Templates → Create**:
+
+1. **Category:** Utility
+2. **Language:** Portuguese (BR) — `pt_BR`
+3. **Name:** `magic_login_access` (qualquer slug)
+4. **Body:**
+   ```
+   Olá *{{1}}*! 👋
+   
+   Recebemos sua solicitação de acesso rápido na DLY.
+   Toque no botão abaixo para entrar direto na sua conta (válido por 15 minutos).
+   ```
+5. **Buttons → Add button:**
+   - Type: **URL**
+   - Button text: `Acessar minha conta`
+   - URL type: **Dynamic**
+   - Base URL: `https://dly.com.br/wc-api/smart-checkout/login/`
+   - Sample URL: cola a URL completa de um exemplo (ex:
+     `https://dly.com.br/wc-api/smart-checkout/login/?uid=1&magic_login=sample`)
+6. **Submit for review** → espera approved (~5-30 min)
+
+### Cria a automação no WaCRM
+
+1. Sincroniza templates: Configurações → Modelos → **Sincronizar**
+2. **Automações → Nova:**
+   - **Nome:** `Magic Login → WhatsApp`
+   - **Trigger:** `Magic Login Solicitado`
+   - **Active** → ON
+3. **Adiciona step:** `Enviar Modelo`
+   - Template: `magic_login_access` (pt_BR)
+   - Variável `{{1}}`: `{{customer.first_name}}`
+   - **Sufixo do botão URL:** `{{magic_login.suffix}}` ← campo novo
+4. **Salva**
+
+Próxima vez que um cliente solicitar magic link, o WP dispara o webhook,
+o WaCRM cria/encontra o contato, executa a automação e o cliente recebe
+o WhatsApp com botão "Acessar minha conta" — tap = login direto.
+
+### Variáveis disponíveis no contexto magic-login
+
+| Placeholder | Valor |
+| --- | --- |
+| `{{magic_login.url}}` | URL completa (ex: `https://dly.com.br/wc-api/smart-checkout/login/?uid=3&magic_login=ABC`) |
+| `{{magic_login.suffix}}` | Só a query string (ex: `?uid=3&magic_login=ABC`) — use no sufixo do botão Dynamic |
+| `{{magic_login.uid}}` | `3` |
+| `{{magic_login.token}}` | `ABC` (valor do param `magic_login`) |
+| `{{customer.first_name}}` | `Junior` |
+| `{{customer.name}}` | nome completo (montado a partir de first_name + last_name) |
+| `{{customer.phone}}`, `{{customer.email}}` | os do payload |
+
+### Por que dois esquemas (HMAC E token query string)?
+
+O webhook nativo do WC assina cada POST com `x-wc-webhook-signature`
+(HMAC-SHA256 + secret). O hook custom do tema (magic login) não usa
+essa pipeline — é um `wp_remote_post` direto. Pra não te obrigar a
+escrever HMAC em PHP no tema, o endpoint aceita o mesmo secret na
+query string como `?token=`, validado com `crypto.timingSafeEqual`.
+
+Mesmo nível de segurança que HMAC desde que o secret não vaze. O
+endpoint exige **pelo menos um dos dois** — request sem signature E
+sem token retorna 401.
+
+## Carrinho Abandonado (Funnelkit / BuildwooFunnels)
+
+A Cart Abandonment Recovery for WooCommerce (Funnelkit) dispara
+**multipart/form-data** ou **application/x-www-form-urlencoded** com
+`order_status=abandoned` quando o cliente abandona o checkout. O
+mesmo endpoint do WC recebe — auth via `?token=` (o plugin não
+assina com HMAC).
+
+### Como configurar
+
+1. WordPress → **WooCommerce → Cart Abandonment** → **Recovery
+   Campaigns** → cria/edita uma campanha
+2. Adiciona um **passo do tipo Webhook**
+3. Cola a URL:
+   ```
+   https://crm.auroralabs.com.br/api/integrations/woocommerce/webhook
+     ?user_id=SEU_USER_ID&token=SEU_WEBHOOK_SECRET
+   ```
+4. Salva e ativa a campanha
+
+> Tanto `multipart/form-data` quanto `application/x-www-form-urlencoded`
+> funcionam — o endpoint detecta o Content-Type sozinho.
+
+### Campos esperados (Funnelkit padrão)
+
+| Campo do plugin | Vira | Notas |
+| --- | --- | --- |
+| `first_name`, `last_name` | `{{customer.first_name}}`, `{{customer.last_name}}` | Pode vir vazio se cliente não preencheu |
+| `phone` ou `phone_number` | `{{customer.phone}}` (e usado pra match/criar contato) | ⚠️ Sem isso o evento é ack-ado mas SKIPADO (sem WhatsApp) |
+| `email` | `{{customer.email}}` | |
+| `checkout_url` | `{{cart.checkout_url}}` (URL completa) e `{{cart.checkout_url_suffix}}` (`?wcf_ac_token=...`) | URL com token de recuperação — clicando volta o carrinho montado |
+| `coupon_code` | `{{cart.coupon_code}}` | Cupom gerado pela campanha (vazio se não tiver) |
+| `cart_total` | `{{cart.total}}` | |
+| `product_names` | `{{cart.product_names}}` | Lista separada por vírgula |
+| `order_status` | dispara `cart_abandoned` quando = `"abandoned"` | Outros statuses são ignorados (ack 200) |
+
+`product_table` (HTML) é ignorado — não dá pra usar em template HSM.
+
+### Template HSM com URL button dinâmico
+
+Meta Business Manager → Templates → Create:
+
+- **Category:** Marketing (carrinho abandonado normalmente é Marketing,
+  não Utility — confirma com tua categoria no Meta)
+- **Language:** pt_BR
+- **Name:** `carrinho_abandonado`
+- **Body:**
+  ```
+  Oi *{{1}}*! 🛒
+
+  Vi que você esqueceu *{{2}}* no carrinho. Tá tudo guardado pra você.
+
+  Se voltar agora, ainda dá pra finalizar — toque no botão abaixo.
+  ```
+- **Buttons → URL:**
+  - Text: `Voltar ao carrinho`
+  - URL type: **Dynamic**
+  - Base URL: `https://dly.com.br/finalizar-compra/`
+  - Sample URL: `https://dly.com.br/finalizar-compra/?wcf_ac_token=sample`
+- Submit → Approved
+
+### Automação no WaCRM
+
+- **Trigger:** `Carrinho Abandonado`
+- **Step:** Enviar Modelo `carrinho_abandonado`
+  - `{{1}}` → `{{customer.first_name}}`
+  - `{{2}}` → `{{cart.product_names}}`
+  - **Sufixo do botão URL:** `{{cart.checkout_url_suffix}}`
+- Active → ON
+
+Quando o cliente abandona, o plugin dispara o webhook (form-data), o
+WaCRM cria/encontra o contato, executa a automação e o cliente recebe
+"Voltar ao carrinho" no WhatsApp com link pra finalizar.
+
+### Edge case: phone vazio
+
+A Funnelkit dispara o webhook mesmo quando o cliente ainda não digitou
+o telefone (early-funnel abandonment). Nesse caso o endpoint retorna
+200 com `skipped: "no-phone"` — o evento é ack-ado pra plugin não
+retry, mas a automação não dispara porque WhatsApp sem telefone é
+impossível.
+
 ## TODO — Fase 2 (UI)
 
 - Builder de automation no painel mostrando os triggers `order_*`

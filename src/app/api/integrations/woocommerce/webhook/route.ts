@@ -5,6 +5,7 @@ import { recalculateUserRFM } from "@/lib/rfm/engine";
 import { runAutomationsForTrigger } from "@/lib/automations/engine";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { ingestOrder } from "@/lib/commerce/order-ingestion";
+import { extractBirthdayRaw } from "@/lib/commerce/birthday";
 import { normalizePhone } from "@/lib/integrations/phone-normalization";
 import type { AutomationTriggerType } from "@/types";
 
@@ -79,6 +80,284 @@ const TRACKING_META_KEYS = [
 interface WooMetaItem {
   key?: string;
   value?: unknown;
+}
+
+interface MagicLoginPayload {
+  url?: string;
+  user?: {
+    id?: number | string;
+    username?: string;
+    email?: string;
+    phone?: string;
+    first_name?: string;
+    last_name?: string;
+  };
+}
+
+/**
+ * Funnelkit / BuildwooFunnels Cart Abandonment Recovery posts either
+ * multipart/form-data or application/x-www-form-urlencoded — both
+ * parsed identically by request.formData(). Field names vary slightly
+ * between plugin versions (`phone` vs `phone_number`), so we probe
+ * each candidate. Empty strings are returned verbatim so the caller
+ * can detect a phoneless cart (common in early-funnel abandonment
+ * where the customer hasn't typed a phone yet) and skip cleanly.
+ */
+interface CartAbandonedFields {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  order_status: string;
+  checkout_url: string;
+  coupon_code: string;
+  product_names: string;
+  cart_total: string;
+}
+
+function readField(form: FormData, ...candidates: string[]): string {
+  for (const key of candidates) {
+    const v = form.get(key);
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return "";
+}
+
+function parseCartAbandonedForm(form: FormData): CartAbandonedFields {
+  return {
+    first_name: readField(form, "first_name"),
+    last_name: readField(form, "last_name"),
+    email: readField(form, "email"),
+    phone: readField(form, "phone", "phone_number"),
+    order_status: readField(form, "order_status"),
+    checkout_url: readField(form, "checkout_url"),
+    coupon_code: readField(form, "coupon_code"),
+    product_names: readField(form, "product_names"),
+    cart_total: readField(form, "cart_total"),
+  };
+}
+
+/**
+ * Handle the SmartCheckout / Loja5 magic-login event. Splits the magic
+ * URL into a base + query suffix (Meta's dynamic-URL button shape),
+ * upserts the contact by phone, and fires
+ * `customer_magic_login_requested` with magic_login.{url, suffix, uid,
+ * token} + customer.{...} in the context.
+ *
+ * Returns a `{ status, body }` envelope so the route handler can wrap
+ * it in NextResponse without each branch having to know about it.
+ */
+async function handleMagicLogin(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  userId: string,
+  payload: MagicLoginPayload,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const rawUrl = payload.url ?? "";
+  const phone = normalizePhone(payload.user?.phone ?? null);
+  if (!phone) {
+    return { status: 400, body: { error: "Customer phone missing or invalid" } };
+  }
+  if (!rawUrl) {
+    return { status: 400, body: { error: "Magic-login URL missing" } };
+  }
+
+  // Parse the URL into base + suffix; expose the query params individually
+  // for templates that don't use the dynamic-URL button shape.
+  let parsedUrl: URL | null = null;
+  let suffix = "";
+  try {
+    parsedUrl = new URL(rawUrl);
+    suffix = parsedUrl.search || "";
+  } catch {
+    parsedUrl = null;
+  }
+  const uid = parsedUrl?.searchParams.get("uid") ?? "";
+  const tokenParam = parsedUrl?.searchParams.get("magic_login") ?? "";
+
+  // Find or create the contact — same shape as the order ingest path.
+  let contactId: string | null = null;
+  const { data: existing } = await db
+    .from("contacts")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("phone", phone)
+    .maybeSingle();
+  if (existing?.id) {
+    contactId = existing.id as string;
+  } else {
+    const firstName = payload.user?.first_name ?? "";
+    const lastName = payload.user?.last_name ?? "";
+    const fullName =
+      `${firstName} ${lastName}`.trim() ||
+      payload.user?.username ||
+      "Magic Login Customer";
+    const { data: created, error: insertErr } = await db
+      .from("contacts")
+      .insert({
+        user_id: userId,
+        phone,
+        name: fullName,
+        email: payload.user?.email ?? null,
+      })
+      .select("id")
+      .single();
+    if (insertErr) {
+      console.error("[woocommerce-webhook] magic-login contact create failed:", insertErr);
+    } else {
+      contactId = (created?.id as string) ?? null;
+    }
+  }
+
+  const firstName = payload.user?.first_name ?? "";
+  const lastName = payload.user?.last_name ?? "";
+  const customerName =
+    `${firstName} ${lastName}`.trim() ||
+    payload.user?.username ||
+    "Cliente";
+
+  try {
+    await runAutomationsForTrigger({
+      userId,
+      triggerType: "customer_magic_login_requested",
+      contactId,
+      context: {
+        magic_login: {
+          url: rawUrl,
+          suffix,
+          uid,
+          token: tokenParam,
+        },
+        customer: {
+          name: customerName,
+          first_name: firstName,
+          last_name: lastName,
+          phone,
+          email: payload.user?.email ?? undefined,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("[woocommerce-webhook] magic-login dispatch failed:", err);
+  }
+
+  return { status: 200, body: { success: true, event: "magic_login" } };
+}
+
+/**
+ * Split a checkout URL into base + suffix, mirroring the magic-login
+ * shape so the same template machinery (Meta dynamic-URL button) just
+ * works.
+ */
+function splitUrlForButton(raw: string): { base: string; suffix: string } {
+  try {
+    const u = new URL(raw);
+    return {
+      base: `${u.origin}${u.pathname}`,
+      suffix: u.search || "",
+    };
+  } catch {
+    return { base: "", suffix: "" };
+  }
+}
+
+/**
+ * Handle a Funnelkit / BuildwooFunnels cart-abandoned event. Phone is
+ * optional in early-funnel abandonment — when missing, we ack the
+ * webhook (so the plugin doesn't retry) but skip the automation since
+ * WhatsApp delivery isn't possible without it.
+ */
+async function handleCartAbandoned(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  userId: string,
+  fields: CartAbandonedFields,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const phone = normalizePhone(fields.phone);
+  if (!phone) {
+    console.info(
+      "[woocommerce-webhook] cart_abandoned skipped — no phone in payload",
+    );
+    return {
+      status: 200,
+      body: { success: true, event: "cart_abandoned", skipped: "no-phone" },
+    };
+  }
+  if (!fields.checkout_url) {
+    return {
+      status: 400,
+      body: { error: "Cart abandoned payload missing checkout_url" },
+    };
+  }
+
+  // Find or create the contact — same shape as the order ingest path.
+  let contactId: string | null = null;
+  const { data: existing } = await db
+    .from("contacts")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("phone", phone)
+    .maybeSingle();
+  if (existing?.id) {
+    contactId = existing.id as string;
+  } else {
+    const fullName =
+      `${fields.first_name} ${fields.last_name}`.trim() ||
+      fields.email ||
+      "Cliente";
+    const { data: created, error: insertErr } = await db
+      .from("contacts")
+      .insert({
+        user_id: userId,
+        phone,
+        name: fullName,
+        email: fields.email || null,
+      })
+      .select("id")
+      .single();
+    if (insertErr) {
+      console.error(
+        "[woocommerce-webhook] cart_abandoned contact create failed:",
+        insertErr,
+      );
+    } else {
+      contactId = (created?.id as string) ?? null;
+    }
+  }
+
+  const split = splitUrlForButton(fields.checkout_url);
+  const customerName =
+    `${fields.first_name} ${fields.last_name}`.trim() ||
+    fields.email ||
+    "Cliente";
+
+  try {
+    await runAutomationsForTrigger({
+      userId,
+      triggerType: "cart_abandoned",
+      contactId,
+      context: {
+        cart: {
+          checkout_url: fields.checkout_url,
+          checkout_url_suffix: split.suffix,
+          coupon_code: fields.coupon_code,
+          total: fields.cart_total,
+          product_names: fields.product_names,
+        },
+        customer: {
+          name: customerName,
+          first_name: fields.first_name,
+          last_name: fields.last_name,
+          phone,
+          email: fields.email || undefined,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("[woocommerce-webhook] cart_abandoned dispatch failed:", err);
+  }
+
+  return { status: 200, body: { success: true, event: "cart_abandoned" } };
 }
 
 /**
@@ -194,30 +473,106 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Read raw body and verify HMAC signature
-    const rawBody = await request.text();
-    const signature = request.headers.get("x-wc-webhook-signature");
+    // 2a. Form-data branch — third-party WC plugins (Funnelkit /
+    // BuildwooFunnels Cart Abandonment Recovery) deliver as either
+    // multipart/form-data or application/x-www-form-urlencoded. They
+    // can't sign with HMAC, so this branch requires `?token=` auth.
+    // Detected by Content-Type so we don't consume the request body
+    // twice (request.text() would block request.formData()).
+    const contentType = (request.headers.get("content-type") || "").toLowerCase();
+    const isFormSubmission =
+      contentType.includes("multipart/form-data") ||
+      contentType.includes("application/x-www-form-urlencoded");
 
-    if (!signature) {
-      // WC pings the delivery URL twice on webhook save WITHOUT a
-      // signature (it's testing reachability, not behavior). Both
-      // requests respond 401 — that's the contract — but the warning
-      // pollutes the Vercel dashboard with two angry-looking entries
-      // every time the operator edits the webhook in WP. Demote to
-      // debug; real deliveries always include the header so a
-      // missing one continues to be benign.
-      console.debug("[woocommerce-webhook] Missing x-wc-webhook-signature header (likely a WP save-time ping)");
-      return NextResponse.json({ error: "Missing signature" }, { status: 401 });
+    if (isFormSubmission) {
+      const tokenQ = searchParams.get("token");
+      if (!tokenQ) {
+        return NextResponse.json(
+          { error: "Missing token (form-data webhooks require ?token=)" },
+          { status: 401 },
+        );
+      }
+      const tBuf = Buffer.from(tokenQ);
+      const sBuf = Buffer.from(config.webhook_secret);
+      const ok = tBuf.length === sBuf.length && crypto.timingSafeEqual(tBuf, sBuf);
+      if (!ok) {
+        console.warn("[woocommerce-webhook] Token query auth failed (form)");
+        return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+      }
+
+      const form = await request.formData();
+      const fields = parseCartAbandonedForm(form);
+
+      if (fields.order_status === "abandoned") {
+        const r = await handleCartAbandoned(supabaseAdmin(), userId, fields);
+        return NextResponse.json(r.body, { status: r.status });
+      }
+
+      // Unknown form event — ack so the plugin doesn't retry, but log so
+      // an operator can add a new handler. Includes the field names so
+      // we don't need a body dump to identify the source.
+      console.warn(
+        "[woocommerce-webhook] Unknown form-data event",
+        Array.from(form.keys()),
+      );
+      return NextResponse.json(
+        { success: true, event: "unknown", fields: Array.from(form.keys()) },
+        { status: 200 },
+      );
     }
 
-    const computedSignature = crypto
-      .createHmac("sha256", config.webhook_secret)
-      .update(rawBody)
-      .digest("base64");
+    // 2. Read raw body and authenticate the request. Two paths:
+    //
+    //    a) HMAC via `x-wc-webhook-signature` header — used by WC's
+    //       native webhook UI (Settings → Advanced → Webhooks).
+    //    b) Shared secret via `?token=` query string — used by
+    //       theme-side `wp_remote_post` hooks (SmartCheckout / Loja5
+    //       magic login, custom theme events) that can't easily sign
+    //       with HMAC. Same `webhook_secret` value, just transported
+    //       differently. Both paths compare in constant time.
+    //
+    //    Either header OR query token is enough. Real WC deliveries
+    //    always send the header, so the token fallback only matters
+    //    for the custom-theme path.
+    const rawBody = await request.text();
+    const signature = request.headers.get("x-wc-webhook-signature");
+    const tokenQuery = searchParams.get("token");
 
-    if (signature !== computedSignature) {
-      console.warn("[woocommerce-webhook] Signature verification failed");
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    if (signature) {
+      const computedSignature = crypto
+        .createHmac("sha256", config.webhook_secret)
+        .update(rawBody)
+        .digest("base64");
+      // Use timingSafeEqual to avoid leaking the secret via response-
+      // time analysis. Length mismatch falls through to the !== check.
+      const sigBuf = Buffer.from(signature);
+      const expBuf = Buffer.from(computedSignature);
+      const ok =
+        sigBuf.length === expBuf.length &&
+        crypto.timingSafeEqual(sigBuf, expBuf);
+      if (!ok) {
+        console.warn("[woocommerce-webhook] HMAC signature verification failed");
+        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      }
+    } else if (tokenQuery) {
+      const t = Buffer.from(tokenQuery);
+      const s = Buffer.from(config.webhook_secret);
+      const ok = t.length === s.length && crypto.timingSafeEqual(t, s);
+      if (!ok) {
+        console.warn("[woocommerce-webhook] Token query auth failed");
+        return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+      }
+    } else {
+      // WC pings the delivery URL twice on webhook save WITHOUT a
+      // signature or token (it's testing reachability, not behavior).
+      // Both requests respond 401 — that's the contract — but demote
+      // to debug so the Vercel dashboard doesn't show two angry-
+      // looking warnings every time the operator edits the webhook.
+      console.debug("[woocommerce-webhook] No signature/token (likely a WP save-time ping)");
+      return NextResponse.json(
+        { error: "Missing signature or token" },
+        { status: 401 },
+      );
     }
 
     // 3. Parse payload
@@ -229,12 +584,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
-    // 4. Normalize the WC payload and ingest the order. `ingestOrder`
+    const db = supabaseAdmin();
+
+    // 4. Detect payload shape and dispatch. WC's native webhook always
+    // sends an order object with `id` + `status` at the top level.
+    // Custom theme hooks (e.g. SmartCheckout / Loja5 magic-login) post
+    // their own payload — currently `{ url, user }`. Routing by shape
+    // lets the operator use ONE delivery URL for every WC-side hook
+    // instead of one per event type.
+    if (
+      typeof payload.url === "string" &&
+      payload.user &&
+      typeof payload.user === "object" &&
+      payload.id == null
+    ) {
+      const r = await handleMagicLogin(db, userId, payload);
+      return NextResponse.json(r.body, { status: r.status });
+    }
+
+    // 5. Normalize the WC payload and ingest the order. `ingestOrder`
     // handles contact match (phone → email → create), platform tag, and
     // status-transition detection. Same code path is reused by the
     // REST-API sync engine.
-    const db = supabaseAdmin();
-
     const externalOrderId = payload.id?.toString();
     if (!externalOrderId) {
       return NextResponse.json({ error: "Missing order ID in payload" }, { status: 400 });
@@ -266,6 +637,7 @@ export async function POST(request: Request) {
             payload.billing?.last_name || payload.shipping?.last_name || null,
           phone_raw: rawPhone,
           email,
+          birthday: extractBirthdayRaw(payload.billing, payload.meta_data),
         },
         line_items_raw: payload.line_items,
         platform: "woocommerce",
