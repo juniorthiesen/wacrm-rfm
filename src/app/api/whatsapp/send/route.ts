@@ -291,10 +291,11 @@ export async function POST(request: Request) {
         sender_type: 'agent',
         content_type: message_type,
         content_text: content_text || null,
-        // For media messages we store the Meta media_id so the existing
-        // /api/whatsapp/media/[mediaId] proxy can serve the thumbnail.
+        // Store the proxy path so MessageBubble can load it with auth headers.
         // For text/template, prefer any explicit media_url from the caller.
-        media_url: WA_MEDIA_TYPES.has(message_type) ? (media_id || null) : (media_url || null),
+        media_url: WA_MEDIA_TYPES.has(message_type)
+          ? (media_id ? `/api/whatsapp/media/${media_id}` : null)
+          : (media_url || null),
         template_name: template_name || null,
         message_id: waMessageId,
         status: 'sent',

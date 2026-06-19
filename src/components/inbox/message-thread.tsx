@@ -453,6 +453,77 @@ export function MessageThread({
     }
   }, [messages]);
 
+  const handleSendMedia = useCallback(
+    async (file: File, caption?: string) => {
+      if (!conversation) return;
+
+      const tempId = `temp-${Date.now()}`;
+      const objectUrl = URL.createObjectURL(file);
+      const mime = file.type;
+      const mediaType: "image" | "audio" | "video" | "document" = mime.startsWith("image/")
+        ? "image"
+        : mime.startsWith("audio/")
+          ? "audio"
+          : mime.startsWith("video/")
+            ? "video"
+            : "document";
+
+      const optimisticMsg: Message = {
+        id: tempId,
+        conversation_id: conversation.id,
+        sender_type: "agent",
+        content_type: mediaType,
+        content_text: caption ?? undefined,
+        media_url: objectUrl,
+        status: "sending",
+        created_at: new Date().toISOString(),
+      };
+      onNewMessage(optimisticMsg);
+
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const uploadRes = await fetch("/api/whatsapp/media/upload", {
+          method: "POST",
+          body: form,
+        });
+        const uploadData = await uploadRes.json().catch(() => ({}));
+        if (!uploadRes.ok) {
+          throw new Error(uploadData?.error ?? `Upload falhou: HTTP ${uploadRes.status}`);
+        }
+        const { media_id } = uploadData as { media_id: string };
+
+        const sendRes = await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_id: conversation.id,
+            message_type: mediaType,
+            media_id,
+            content_text: caption || undefined,
+            filename: mediaType === "document" ? file.name : undefined,
+          }),
+        });
+        const sendData = await sendRes.json().catch(() => ({}));
+        if (!sendRes.ok) {
+          throw new Error(sendData?.error ?? `Envio falhou: HTTP ${sendRes.status}`);
+        }
+
+        onUpdateMessage(tempId, {
+          status: "sent",
+          media_url: `/api/whatsapp/media/${media_id}`,
+        });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : "network error";
+        toast.error(`Falha ao enviar mídia: ${reason}`);
+        onUpdateMessage(tempId, { status: "failed" });
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    },
+    [conversation, onNewMessage, onUpdateMessage],
+  );
+
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
       if (!conversation) return;
@@ -1107,6 +1178,7 @@ export function MessageThread({
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
         onSend={handleSend}
+        onSendMedia={handleSendMedia}
         onOpenTemplates={handleOpenTemplates}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
