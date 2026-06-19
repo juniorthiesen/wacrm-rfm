@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
+import {
+  sendTextMessage,
+  sendTemplateMessage,
+  sendMediaMessage,
+  type WaMediaType,
+} from '@/lib/whatsapp/meta-api'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
+
+const WA_MEDIA_TYPES = new Set<string>(['image', 'audio', 'video', 'document', 'sticker'])
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import {
   sanitizePhoneForMeta,
@@ -44,6 +51,8 @@ export async function POST(request: Request) {
       message_type,
       content_text,
       media_url,
+      media_id,
+      filename,
       template_name,
       template_language,
       template_params,
@@ -67,6 +76,13 @@ export async function POST(request: Request) {
     if (message_type === 'template' && !template_name) {
       return NextResponse.json(
         { error: 'template_name is required for template messages' },
+        { status: 400 }
+      )
+    }
+
+    if (WA_MEDIA_TYPES.has(message_type) && !media_id) {
+      return NextResponse.json(
+        { error: 'media_id is required for media messages' },
         { status: 400 }
       )
     }
@@ -195,6 +211,19 @@ export async function POST(request: Request) {
         })
         return result.messageId
       }
+      if (WA_MEDIA_TYPES.has(message_type)) {
+        const result = await sendMediaMessage({
+          phoneNumberId: config.phone_number_id,
+          accessToken,
+          to: phone,
+          mediaType: message_type as WaMediaType,
+          mediaId: media_id,
+          caption: content_text || undefined,
+          filename: filename || undefined,
+          contextMessageId,
+        })
+        return result.messageId
+      }
       const result = await sendTextMessage({
         phoneNumberId: config.phone_number_id,
         accessToken,
@@ -262,7 +291,10 @@ export async function POST(request: Request) {
         sender_type: 'agent',
         content_type: message_type,
         content_text: content_text || null,
-        media_url: media_url || null,
+        // For media messages we store the Meta media_id so the existing
+        // /api/whatsapp/media/[mediaId] proxy can serve the thumbnail.
+        // For text/template, prefer any explicit media_url from the caller.
+        media_url: WA_MEDIA_TYPES.has(message_type) ? (media_id || null) : (media_url || null),
         template_name: template_name || null,
         message_id: waMessageId,
         status: 'sent',
@@ -283,7 +315,10 @@ export async function POST(request: Request) {
     await supabase
       .from('conversations')
       .update({
-        last_message_text: content_text || `[${message_type}]`,
+        last_message_text: content_text || {
+          image: '📷 Imagem', audio: '🎵 Áudio', video: '🎬 Vídeo',
+          document: '📎 Documento', sticker: '😊 Sticker',
+        }[message_type as string] || `[${message_type}]`,
         last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

@@ -537,6 +537,108 @@ function validateInteractiveHeaderFooter(
 // Media
 // ============================================================
 
+// WhatsApp media type (different from MIME type)
+export type WaMediaType = 'image' | 'audio' | 'video' | 'document' | 'sticker'
+
+export interface UploadMediaArgs {
+  phoneNumberId: string
+  accessToken: string
+  fileBuffer: Buffer
+  mimeType: string
+  fileName: string
+}
+
+/**
+ * Upload a local file to Meta's media server.
+ * Returns the media_id to use in sendMediaMessage.
+ * The ID is permanent and owned by the phone number — no expiry for sending.
+ */
+export async function uploadMedia(args: UploadMediaArgs): Promise<string> {
+  const { phoneNumberId, accessToken, fileBuffer, mimeType, fileName } = args
+  const form = new FormData()
+  form.append('messaging_product', 'whatsapp')
+  form.append('type', mimeType)
+  form.append('file', new Blob([fileBuffer.buffer as ArrayBuffer], { type: mimeType }), fileName)
+
+  const response = await fetch(`${META_API_BASE}/${phoneNumberId}/media`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form,
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Media upload failed: ${response.status}`)
+  }
+  const data = await response.json() as { id?: string }
+  if (!data.id) throw new Error('No media_id in Meta upload response')
+  return data.id
+}
+
+export interface SendMediaMessageArgs {
+  phoneNumberId: string
+  accessToken: string
+  to: string
+  mediaType: WaMediaType
+  mediaId: string
+  caption?: string
+  filename?: string
+  contextMessageId?: string
+}
+
+/**
+ * Send an image / audio / video / document / sticker by Meta media_id.
+ * caption is ignored for audio and sticker (Meta rejects it).
+ * filename is only included for document (shows in chat bubble).
+ */
+export async function sendMediaMessage(
+  args: SendMediaMessageArgs,
+): Promise<MetaSendResult> {
+  const {
+    phoneNumberId,
+    accessToken,
+    to,
+    mediaType,
+    mediaId,
+    caption,
+    filename,
+    contextMessageId,
+  } = args
+
+  const mediaPayload: Record<string, unknown> = { id: mediaId }
+  if (caption && mediaType !== 'audio' && mediaType !== 'sticker') {
+    mediaPayload.caption = caption
+  }
+  if (filename && mediaType === 'document') {
+    mediaPayload.filename = filename
+  }
+
+  const body: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: mediaType,
+    [mediaType]: mediaPayload,
+  }
+  if (contextMessageId) {
+    body.context = { message_id: contextMessageId }
+  }
+
+  const response = await fetch(`${META_API_BASE}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Media send failed: ${response.status}`)
+  }
+  const data = await response.json() as { messages?: Array<{ id: string }> }
+  const messageId = data?.messages?.[0]?.id
+  if (!messageId) throw new Error('No message ID in Meta send response')
+  return { messageId }
+}
+
 export interface GetMediaUrlArgs {
   mediaId: string
   accessToken: string
