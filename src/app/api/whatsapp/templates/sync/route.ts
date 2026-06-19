@@ -45,6 +45,14 @@ interface MetaTemplateComponent {
   text?: string
   format?: string
   buttons?: MetaTemplateButton[]
+  // Image / video / document headers ship the sample asset Meta hashes
+  // and stores at approval time inside `example.header_handle`. Sending
+  // a media-header template requires us to echo that URL back as the
+  // header parameter — without it Meta returns #132012 "Parameter
+  // format does not match format in the created template".
+  example?: {
+    header_handle?: string[]
+  }
 }
 
 interface MetaTemplate {
@@ -202,7 +210,14 @@ export async function POST() {
         category: normalizeCategory(t.category),
         language: t.language,
         header_type: header?.format?.toLowerCase() ?? null,
-        header_content: header?.text ?? null,
+        // For text headers we want the literal body; for media headers
+        // (image / video / document) the only useful value at send time
+        // is the URL Meta hashed at approval, surfaced via
+        // example.header_handle. Without this fallback every promo
+        // template with an image header would arrive at the inbox with
+        // header_content=NULL, and every send would 132012.
+        header_content:
+          header?.text ?? header?.example?.header_handle?.[0] ?? null,
         body_text: body?.text ?? '',
         footer_text: footer?.text ?? null,
         buttons,

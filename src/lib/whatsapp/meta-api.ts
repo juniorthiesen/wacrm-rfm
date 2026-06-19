@@ -136,6 +136,21 @@ export interface SendTemplateMessageArgs {
    * shape, which no current automation requires.
    */
   buttonUrlParam?: string
+  /**
+   * Header component value. Required whenever the approved template has
+   * a media header (image/video/document) or a text header that uses
+   * a variable — without it Meta returns #132012 "Parameter format
+   * does not match format in the created template".
+   *
+   * For media headers `content` is the HTTPS link Meta resolves at send
+   * time (typically the same URL stored in `message_templates.header_content`
+   * from sync). For text headers `content` is the substitution string
+   * for {{1}} in the header text.
+   */
+  header?: {
+    type: 'image' | 'video' | 'document' | 'text'
+    content: string
+  }
 }
 
 /**
@@ -154,6 +169,7 @@ export async function sendTemplateMessage(
     params,
     contextMessageId,
     buttonUrlParam,
+    header,
   } = args
   const url = `${META_API_BASE}/${phoneNumberId}/messages`
 
@@ -162,10 +178,31 @@ export async function sendTemplateMessage(
     language: { code: language },
   }
 
-  // Body parameters and the URL button param sit in the SAME `components`
-  // array. Build it up additively so a template can have one, the other,
-  // both, or neither.
+  // Header, body parameters and the URL button param sit in the SAME
+  // `components` array — Meta orders them itself by `type`, but we still
+  // push the header first to match how every Meta sample is written. A
+  // template can have one, several, or none.
   const components: Record<string, unknown>[] = []
+  if (header && header.type && header.content) {
+    if (header.type === 'text') {
+      components.push({
+        type: 'header',
+        parameters: [{ type: 'text', text: header.content }],
+      })
+    } else {
+      // image / video / document — the parameter key is the type itself
+      // and its inner shape is `{ link: <https URL> }`.
+      components.push({
+        type: 'header',
+        parameters: [
+          {
+            type: header.type,
+            [header.type]: { link: header.content },
+          },
+        ],
+      })
+    }
+  }
   if (params && params.length > 0) {
     components.push({
       type: 'body',

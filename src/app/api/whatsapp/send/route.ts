@@ -7,6 +7,7 @@ import {
   type WaMediaType,
 } from '@/lib/whatsapp/meta-api'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
+import { resolveTemplateHeader } from '@/lib/whatsapp/template-header'
 
 const WA_MEDIA_TYPES = new Set<string>(['image', 'audio', 'video', 'document', 'sticker'])
 import { supabaseAdmin } from '@/lib/flows/admin-client'
@@ -194,6 +195,19 @@ export async function POST(request: Request) {
     let waMessageId = ''
     let workingPhone = sanitizedPhone
 
+    // Look up the template's header once (outside the per-variant
+    // retry loop) so a media header travels with the body params. Meta
+    // returns #132012 if a template with a header is sent without one.
+    const templateHeader =
+      message_type === 'template'
+        ? await resolveTemplateHeader(
+            supabase,
+            user.id,
+            template_name,
+            template_language,
+          )
+        : undefined
+
     const attempt = async (phone: string): Promise<string> => {
       if (message_type === 'template') {
         const result = await sendTemplateMessage({
@@ -208,6 +222,7 @@ export async function POST(request: Request) {
           language: template_language || undefined,
           params: template_params || [],
           contextMessageId,
+          header: templateHeader,
         })
         return result.messageId
       }

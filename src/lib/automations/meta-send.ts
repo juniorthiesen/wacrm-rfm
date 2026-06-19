@@ -1,4 +1,5 @@
 import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
+import { resolveTemplateHeader } from '@/lib/whatsapp/template-header'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
   sanitizePhoneForMeta,
@@ -122,6 +123,20 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     if (tplRow?.language) resolvedLanguage = tplRow.language as string
   }
 
+  // Look up the template header once before the retry loop. Without
+  // forwarding the media header to Meta a promo template with an image
+  // header would 132012 on every send. The header is identical across
+  // phone-variant retries, so we resolve it here.
+  const templateHeader =
+    input.kind === 'template'
+      ? await resolveTemplateHeader(
+          db,
+          input.userId,
+          input.templateName,
+          resolvedLanguage,
+        )
+      : undefined
+
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
       const r = await sendTemplateMessage({
@@ -138,6 +153,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         buttonUrlParam: input.buttonUrlParam
           ? sanitizeTemplateParam(input.buttonUrlParam)
           : undefined,
+        header: templateHeader,
       })
       return r.messageId
     }

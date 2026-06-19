@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { sendTemplateMessage, sendTextMessage } from '@/lib/whatsapp/meta-api'
+import { resolveTemplateHeader } from '@/lib/whatsapp/template-header'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
   sanitizePhoneForMeta,
@@ -128,6 +129,18 @@ export async function POST(request: Request) {
       )
     }
 
+    // Look up the template's header once (every recipient gets the
+    // same template). Without forwarding the media header back to Meta
+    // a templates_promo with an image header would 132012 on every
+    // send. Header is identical across recipients so this stays
+    // outside the for-loop.
+    const templateHeader = await resolveTemplateHeader(
+      supabase,
+      user.id,
+      template_name,
+      template_language,
+    )
+
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
       .select('*')
@@ -247,6 +260,7 @@ export async function POST(request: Request) {
               templateName: template_name,
               language: template_language || 'en_US',
               params: recipient.params ?? [],
+              header: templateHeader,
             })
             sentMessageId = result.messageId
           }
