@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/lib/integrations/phone-normalization";
 import { normalizeLineItems } from "./line-items";
 import { deriveCategories } from "./category-tags";
+import { parseBirthday } from "./birthday";
 import type { CommercePlatform, NormalizedLineItem } from "./types";
 
 // Shared shape of a normalized order across platforms — both the webhook
@@ -20,6 +21,9 @@ export interface NormalizedOrder {
     last_name: string | null;
     phone_raw: string | null; // pre-normalization
     email: string | null;
+    /** Raw birthday string from the checkout, pre-parsing. Optional —
+     *  most platforms don't carry it. */
+    birthday?: string | null;
   };
   line_items_raw: unknown; // passed through normalizeLineItems
   platform: CommercePlatform;
@@ -228,6 +232,19 @@ export async function ingestOrder(
       if (retry) contact = retry;
       else console.error("[order-ingestion] Failed to create contact:", insertError);
     }
+  }
+
+  // Persist birthday from the checkout when we have one and the contact
+  // doesn't already have it — never overwrite a value set manually or by
+  // an earlier order. The `.is('birthday', null)` guard makes this safe
+  // to run on every ingest.
+  const birthdayIso = parseBirthday(order.customer.birthday);
+  if (birthdayIso && contact?.id) {
+    await db
+      .from("contacts")
+      .update({ birthday: birthdayIso })
+      .eq("id", contact.id)
+      .is("birthday", null);
   }
 
   // Status-transition detection: lets the webhook decide whether to fire

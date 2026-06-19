@@ -12,6 +12,7 @@ import {
   assignPlatformTag,
   type NormalizedOrder,
 } from "../order-ingestion";
+import { extractBirthdayRaw, parseBirthday } from "../birthday";
 import { normalizePhone } from "@/lib/integrations/phone-normalization";
 
 // Per-page size. WC docs say the max is 100; we use 50 so a single page
@@ -81,6 +82,7 @@ function wcOrderToNormalized(o: WooOrder): NormalizedOrder | null {
       last_name: o.billing?.last_name || o.shipping?.last_name || null,
       phone_raw: o.billing?.phone || o.shipping?.phone || null,
       email: o.billing?.email || null,
+      birthday: extractBirthdayRaw(o.billing, o.meta_data),
     },
     line_items_raw: o.line_items,
     platform: "woocommerce",
@@ -180,6 +182,13 @@ async function ingestCustomer(
       `${c.first_name ?? c.billing?.first_name ?? ""} ${c.last_name ?? c.billing?.last_name ?? ""}`.trim() ||
       "WooCommerce Customer";
 
+    const birthday = parseBirthday(
+      extractBirthdayRaw(
+        c.billing,
+        (c as { meta_data?: unknown }).meta_data,
+      ),
+    );
+
     const { data, error } = await db
       .from("contacts")
       .insert({
@@ -187,6 +196,7 @@ async function ingestCustomer(
         phone: normalizedPhone,
         name: fullName,
         email,
+        birthday,
       })
       .select("id")
       .single();

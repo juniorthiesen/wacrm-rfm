@@ -5,8 +5,8 @@
       "schedule": "0 6 * * *"
     },
     {
-      "path": "/api/broadcasts/drip",
-      "schedule": "0 * * * *"
+      "path": "/api/automations/birthday-cron",
+      "schedule": "0 15 * * *"
     }
   ]
 }
