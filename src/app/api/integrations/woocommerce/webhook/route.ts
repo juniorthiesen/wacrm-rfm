@@ -683,6 +683,23 @@ export async function POST(request: Request) {
         const pixCode =
           findMetaValue(payload.meta_data as WooMetaItem[], PIX_META_KEYS) || "";
 
+        // "pending"/"on-hold" isn't exclusive to PIX — boleto and even
+        // card payments transit through it momentarily — but the only
+        // automation wired to `order_received` today sends the PIX
+        // Copia-e-Cola template (see migration
+        // 023_seed_woo_order_notifications.sql). Without a PIX code
+        // there's nothing to interpolate into that template's required
+        // {{3}} variable, so skip the dispatch rather than send a
+        // message with a blank PIX section.
+        if (triggerType === "order_received" && !pixCode) {
+          console.info(
+            "[woocommerce-webhook] order_received skipped — no PIX code in payload (status=%s, order=%s)",
+            status,
+            externalOrderId,
+          );
+          return NextResponse.json({ success: true, order_id: externalOrderId });
+        }
+
         const itemsList = buildItemsList(payload.line_items as WooLineItem[]);
 
         try {
