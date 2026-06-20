@@ -1,0 +1,9 @@
+name = "wacrm-broadcast-drip-cron"
+main = "src/index.ts"
+compatibility_date = "2026-06-19"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[vars]
+APP_URL = "https://crm.auroralabs.com.br"
