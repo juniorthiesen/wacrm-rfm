@@ -13,6 +13,7 @@ import type {
   MetricsBundle,
   PipelineDonutData,
   PipelineStageSlice,
+  RepurchaseMetrics,
   ResponseTimeBucket,
   ResponseTimeSummary,
 } from './types'
@@ -97,6 +98,23 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
       previous: messagesYesterday.count ?? 0,
     },
   }
+}
+
+// --- 1b. Repurchase KPIs ----------------------------------------------
+
+// Unlike the other widgets, this aggregates ~45k orders, so it MUST run
+// set-based in Postgres — a client-side select would be silently capped
+// at 1000 rows by PostgREST. The repurchase_metrics() RPC (migration
+// 038) does the whole thing and guards on auth.uid(); we pass the
+// signed-in user's id explicitly to satisfy its param.
+export async function loadRepurchaseMetrics(db: DB): Promise<RepurchaseMetrics> {
+  const { data: userData } = await db.auth.getUser()
+  const uid = userData.user?.id
+  if (!uid) throw new Error('not authenticated')
+
+  const { data, error } = await db.rpc('repurchase_metrics', { p_user_id: uid })
+  if (error) throw error
+  return data as RepurchaseMetrics
 }
 
 // --- 2. Conversations over time ---------------------------------------
