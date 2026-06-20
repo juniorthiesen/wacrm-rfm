@@ -15,6 +15,7 @@ import {
   loadConversationsSeries,
   loadMetrics,
   loadPipelineDonut,
+  loadRepurchaseMetrics,
   loadResponseTime,
 } from '@/lib/dashboard/queries'
 import type {
@@ -22,12 +23,14 @@ import type {
   ConversationsSeriesPoint,
   MetricsBundle,
   PipelineDonutData,
+  RepurchaseMetrics,
   ResponseTimeSummary,
 } from '@/lib/dashboard/types'
 
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { SkeletonCard } from '@/components/dashboard/skeleton'
 import { QuickActions } from '@/components/dashboard/quick-actions'
+import { RepurchaseSection } from '@/components/dashboard/repurchase-section'
 import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
@@ -59,6 +62,9 @@ export default function DashboardPage() {
 
   const [activity, setActivity] = useState<ActivityItem[] | null>(null)
   const [activityLoading, setActivityLoading] = useState(true)
+
+  const [repurchase, setRepurchase] = useState<RepurchaseMetrics | null>(null)
+  const [repurchaseLoading, setRepurchaseLoading] = useState(true)
 
   const loadAll = useCallback(() => {
     const db = createClient()
@@ -93,6 +99,11 @@ export default function DashboardPage() {
       .then((a) => setActivity(a))
       .catch((err) => console.error('[dashboard] activity failed:', err))
       .finally(() => setActivityLoading(false))
+
+    void loadRepurchaseMetrics(db)
+      .then((r) => setRepurchase(r))
+      .catch((err) => console.error('[dashboard] repurchase failed:', err))
+      .finally(() => setRepurchaseLoading(false))
   }, [])
 
   useEffect(() => {
@@ -183,6 +194,13 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+
+      {/* Repurchase KPIs — the strategy's north-star section */}
+      <RepurchaseSection
+        data={repurchase}
+        loading={repurchaseLoading}
+        locale={locale}
+      />
 
       {/* Quick actions */}
       <QuickActions />
