@@ -279,6 +279,7 @@ export type AutomationTriggerType =
   | 'order_paid'
   | 'order_in_separation'
   | 'order_shipped'
+  | 'order_completed'
   | 'order_cancelled'
   | 'order_refunded'
   | 'order_failed'

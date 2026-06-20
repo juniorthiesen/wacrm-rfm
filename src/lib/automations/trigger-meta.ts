@@ -55,6 +55,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Pedido Enviado',
     pillClass: 'border-sky-500/30 bg-sky-500/10 text-sky-300',
   },
+  order_completed: {
+    label: 'Pedido Concluído',
+    pillClass: 'border-green-500/30 bg-green-500/10 text-green-300',
+  },
   order_cancelled: {
     label: 'Pedido Cancelado',
     pillClass: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
