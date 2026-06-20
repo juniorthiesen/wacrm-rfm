@@ -132,6 +132,7 @@ function getTriggerOptions(t: (key: string) => string) {
     { value: "order_paid" as AutomationTriggerType, label: t("automations.triggerOptions.order_paid"), hint: t("automations.triggerHints.order_paid") },
     { value: "order_in_separation" as AutomationTriggerType, label: t("automations.triggerOptions.order_in_separation"), hint: t("automations.triggerHints.order_in_separation") },
     { value: "order_shipped" as AutomationTriggerType, label: t("automations.triggerOptions.order_shipped"), hint: t("automations.triggerHints.order_shipped") },
+    { value: "order_completed" as AutomationTriggerType, label: t("automations.triggerOptions.order_completed"), hint: t("automations.triggerHints.order_completed") },
     { value: "order_cancelled" as AutomationTriggerType, label: t("automations.triggerOptions.order_cancelled"), hint: t("automations.triggerHints.order_cancelled") },
     { value: "order_refunded" as AutomationTriggerType, label: t("automations.triggerOptions.order_refunded"), hint: t("automations.triggerHints.order_refunded") },
     { value: "order_failed" as AutomationTriggerType, label: t("automations.triggerOptions.order_failed"), hint: t("automations.triggerHints.order_failed") },

@@ -18,7 +18,13 @@ import type { AutomationTriggerType } from "@/types";
 // Brazilian e-commerce often customises the slugs:
 //   - "separacao"  — picking / order being prepared (between paid and
 //                    shipped). Common on Loja5 and similar themes.
-//   - "enviado"    — Portuguese for "shipped"; alternative to "completed".
+//   - "enviado"    — Portuguese for "shipped" → order_shipped.
+//   - "completed"  — order finished/delivered → order_completed, a
+//                    DISTINCT event from "enviado". They used to share
+//                    order_shipped, which double-fired the "shipped"
+//                    message when an order moved enviado → completed.
+//                    Kept separate so completed can drive post-sale
+//                    (e.g. a review request) without re-sending "shipped".
 //   - "on-hold"    — WC standard, used by PIX/boleto gateways while
 //                    waiting for the bank confirmation. Behaviourally
 //                    identical to "pending" for our purposes (the
@@ -34,9 +40,10 @@ function statusToTrigger(status: string): AutomationTriggerType | null {
       return "order_paid";
     case "separacao":
       return "order_in_separation";
-    case "completed":
     case "enviado":
       return "order_shipped";
+    case "completed":
+      return "order_completed";
     case "cancelled":
       return "order_cancelled";
     case "refunded":

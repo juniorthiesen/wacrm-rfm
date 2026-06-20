@@ -43,7 +43,8 @@ chamar o trigger.
 | `order_received` | `pending`, `on-hold` | Pedido criado, aguardando pagamento — **só dispara se houver código PIX nos meta_data** (boleto/cartão "pending" não têm código e são ignorados, pra não disparar a automação de Pix Copia e Cola sem ter o que mandar) |
 | `order_paid` | `processing` | Pagamento confirmado |
 | `order_in_separation` | `separacao` | Pedido em preparação (status custom comum em lojas Loja5) |
-| `order_shipped` | `completed`, `enviado` | Pedido despachado |
+| `order_shipped` | `enviado` | Pedido despachado |
+| `order_completed` | `completed` | Pedido concluído / finalizado — evento separado do envio (use para pós-venda, ex.: pedido de avaliação). Antes compartilhava `order_shipped`, o que reenviava o "pedido enviado" quando o pedido ia de `enviado` → `completed`. |
 | `order_cancelled` | `cancelled` | Pedido cancelado |
 | `order_refunded` | `refunded` | Reembolso emitido |
 | `order_failed` | `failed` | Pagamento falhou |
