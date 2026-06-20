@@ -33,6 +33,22 @@ import type { MessageTemplate } from '@/types';
 const CATEGORIES = ['Marketing', 'Utility', 'Authentication'] as const;
 const HEADER_TYPES = ['text', 'image', 'video', 'document'] as const;
 
+/**
+ * Meta rejects BODY components that contain {{n}} variables but no
+ * `example.body_text` — "o componente do tipo BODY não contém o(s)
+ * campo(s) esperado(s) (example)". Derive a plausible example set from
+ * the highest variable index in the body so every Draft is submittable
+ * without the operator having to hand-craft examples.
+ */
+function buildBodyExample(bodyText: string): { body_text: string[][] } | null {
+  const matches = bodyText.match(/\{\{\s*(\d+)\s*\}\}/g);
+  if (!matches || matches.length === 0) return null;
+  const count = Math.max(...matches.map((m) => Number(m.replace(/\D/g, ''))));
+  const pool = ['Maria', '12345', 'ANIVER10', 'exemplo'];
+  const values = Array.from({ length: count }, (_, i) => pool[i % pool.length]);
+  return { body_text: [values] };
+}
+
 const categoryColors: Record<string, string> = {
   Marketing: 'bg-purple-600/20 text-purple-400 border-purple-600/30',
   Utility: 'bg-blue-600/20 text-blue-400 border-blue-600/30',
@@ -215,6 +231,7 @@ export function TemplateManager() {
             category: form.category,
             language: form.language.trim() || 'en_US',
             body_text: form.body_text.trim(),
+            body_example: buildBodyExample(form.body_text.trim()),
             header_type: form.header_type || null,
             footer_text: form.footer_text.trim() || null,
             status: 'Draft' as const,
@@ -231,6 +248,7 @@ export function TemplateManager() {
           category: form.category,
           language: form.language.trim() || 'en_US',
           body_text: form.body_text.trim(),
+          body_example: buildBodyExample(form.body_text.trim()),
           header_type: form.header_type || null,
           footer_text: form.footer_text.trim() || null,
           status: 'Draft' as const,
