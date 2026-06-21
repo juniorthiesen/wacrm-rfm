@@ -149,7 +149,15 @@ export interface SendTemplateMessageArgs {
    */
   header?: {
     type: 'image' | 'video' | 'document' | 'text'
-    content: string
+    /** Link (media headers) or substitution string (text headers). */
+    content?: string
+    /**
+     * Durable alternative to `content` for media headers: a Meta media_id
+     * obtained from uploadMedia. Preferred when the only source image is a
+     * short-lived CDN URL (e.g. message_templates.header_content from sync),
+     * since uploaded media_ids don't expire for sending. Ignored for text.
+     */
+    mediaId?: string
   }
 }
 
@@ -183,7 +191,7 @@ export async function sendTemplateMessage(
   // push the header first to match how every Meta sample is written. A
   // template can have one, several, or none.
   const components: Record<string, unknown>[] = []
-  if (header && header.type && header.content) {
+  if (header && header.type && (header.content || header.mediaId)) {
     if (header.type === 'text') {
       components.push({
         type: 'header',
@@ -191,15 +199,14 @@ export async function sendTemplateMessage(
       })
     } else {
       // image / video / document — the parameter key is the type itself
-      // and its inner shape is `{ link: <https URL> }`.
+      // and its inner shape is a media object: `{ id }` (uploaded media,
+      // durable) or `{ link }` (public/pre-signed HTTPS URL).
+      const media = header.mediaId
+        ? { id: header.mediaId }
+        : { link: header.content }
       components.push({
         type: 'header',
-        parameters: [
-          {
-            type: header.type,
-            [header.type]: { link: header.content },
-          },
-        ],
+        parameters: [{ type: header.type, [header.type]: media }],
       })
     }
   }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { decrypt } from '@/lib/whatsapp/encryption'
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api'
+import { sendTemplateMessage, uploadMedia } from '@/lib/whatsapp/meta-api'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -23,8 +23,10 @@ import {
  */
 export const maxDuration = 60
 
-// Keep a run well under the timeout: ~150 Meta calls at <=300ms each.
-const MAX_PER_RUN = 150
+// Keep a run well under the 60s timeout: ~80 Meta calls at <=400ms each,
+// plus a one-off media-header upload per campaign. (Was 150, which could
+// tip past 60s when Meta latency rose, killing the function mid-batch.)
+const MAX_PER_RUN = 80
 
 interface ContactRow {
   id: string
@@ -134,6 +136,50 @@ export async function GET(request: Request) {
     }
     const accessToken = decrypt(config.access_token)
 
+    // Resolve a media header to a durable media_id ONCE per campaign run.
+    // Templates with an image/video/document header require a header
+    // component on every send (else Meta #132012). The stored
+    // header_content is a short-lived WhatsApp CDN URL, so we re-upload it
+    // to get a media_id that doesn't expire for sending.
+    let headerParam:
+      | { type: 'image' | 'video' | 'document'; mediaId: string }
+      | undefined
+    const { data: tpl } = await admin
+      .from('message_templates')
+      .select('header_type, header_content')
+      .eq('user_id', c.user_id)
+      .eq('name', c.template_name)
+      .eq('language', c.template_language)
+      .maybeSingle()
+    if (
+      tpl?.header_type &&
+      ['image', 'video', 'document'].includes(tpl.header_type) &&
+      tpl.header_content
+    ) {
+      try {
+        const imgRes = await fetch(tpl.header_content as string)
+        if (!imgRes.ok) throw new Error(`header fetch ${imgRes.status}`)
+        const buf = Buffer.from(await imgRes.arrayBuffer())
+        const mime = imgRes.headers.get('content-type') || 'image/jpeg'
+        const mediaId = await uploadMedia({
+          phoneNumberId: config.phone_number_id,
+          accessToken,
+          fileBuffer: buf,
+          mimeType: mime,
+          fileName: 'header',
+        })
+        headerParam = {
+          type: tpl.header_type as 'image' | 'video' | 'document',
+          mediaId,
+        }
+      } catch (err) {
+        console.error('[broadcast-drip] header media resolve failed:', err)
+        // Fall through without a header — the per-recipient send will then
+        // fail with #132012 and be marked failed, surfacing the problem
+        // instead of silently sending a broken message.
+      }
+    }
+
     const { data: contacts } = await admin
       .from('contacts')
       .select('id, phone, name')
@@ -167,6 +213,7 @@ export async function GET(request: Request) {
             templateName: c.template_name,
             language: c.template_language || 'pt_BR',
             params,
+            header: headerParam,
           })
           messageId = r.messageId
           break
