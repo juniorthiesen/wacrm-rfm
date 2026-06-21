@@ -22,6 +22,7 @@ import {
   BarChart2,
   Target,
   Sparkles,
+  Filter,
 } from "lucide-react";
 import {
   Avatar,
@@ -57,6 +58,7 @@ const navItems: NavItem[] = [
   { href: "/flows", label: "Flows", icon: Workflow, beta: true },
   { href: "/mensurar", label: "Mensurar", icon: BarChart2 },
   { href: "/rfm", label: "RFM", icon: Target },
+  { href: "/audiences", label: "Audiences", icon: Filter },
   { href: "/ai-agent", label: "AI Agent", icon: Sparkles, beta: true },
 ];
 
@@ -74,6 +76,7 @@ const labelKeyMap: Record<string, string> = {
   "Flows": "nav.flows",
   "Mensurar": "nav.mensurar",
   "RFM": "nav.rfm",
+  "Audiences": "nav.audiences",
   "AI Agent": "nav.aiAgent",
   "Settings": "nav.settings",
 };
