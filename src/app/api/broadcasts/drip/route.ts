@@ -34,6 +34,12 @@ interface ContactRow {
   name: string | null
 }
 
+// Shape returned by the claim_broadcast_recipients RPC (migration 041).
+interface ContactRef {
+  id: string
+  contact_id: string
+}
+
 function firstNameOf(name: string | null): string {
   return (name ?? '').trim().split(/\s+/)[0] ?? ''
 }
@@ -109,18 +115,29 @@ export async function GET(request: Request) {
     }
 
     const batchSize = Math.min(MAX_PER_RUN, remaining)
-    const { data: pending } = await admin
-      .from('broadcast_recipients')
-      .select('id, contact_id')
-      .eq('broadcast_id', c.id)
-      .eq('status', 'pending')
-      .order('rank', { ascending: true, nullsFirst: false })
-      .limit(batchSize)
+    // Claim the batch atomically (FOR UPDATE SKIP LOCKED) so a concurrent
+    // drip run can never grab the same recipients and double-send. See
+    // migration 041.
+    const { data: pending } = await admin.rpc('claim_broadcast_recipients', {
+      p_broadcast_id: c.id,
+      p_limit: batchSize,
+    })
 
     if (!pending || pending.length === 0) {
-      // Fila vazia → campanha concluída.
-      await admin.from('broadcasts').update({ status: 'sent' }).eq('id', c.id)
-      summary.push({ broadcast_id: c.id, sent: 0, failed: 0, done: true })
+      // Nothing claimable this run. Only close the campaign when the queue
+      // is TRULY empty — a concurrent run may be holding the last batch, so
+      // we must not mark it 'sent' just because our claim came back empty.
+      const { count: remainingPending } = await admin
+        .from('broadcast_recipients')
+        .select('id', { count: 'exact', head: true })
+        .eq('broadcast_id', c.id)
+        .eq('status', 'pending')
+      if ((remainingPending ?? 0) === 0) {
+        await admin.from('broadcasts').update({ status: 'sent' }).eq('id', c.id)
+        summary.push({ broadcast_id: c.id, sent: 0, failed: 0, done: true })
+      } else {
+        summary.push({ broadcast_id: c.id, sent: 0, failed: 0, done: false })
+      }
       continue
     }
 
@@ -183,7 +200,7 @@ export async function GET(request: Request) {
     const { data: contacts } = await admin
       .from('contacts')
       .select('id, phone, name')
-      .in('id', pending.map((p) => p.contact_id))
+      .in('id', (pending as ContactRef[]).map((p) => p.contact_id))
     const byId = new Map<string, ContactRow>(
       ((contacts ?? []) as ContactRow[]).map((ct) => [ct.id, ct]),
     )
