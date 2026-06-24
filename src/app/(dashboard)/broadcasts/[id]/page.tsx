@@ -38,6 +38,7 @@ import {
   getBroadcastStatus,
   getRecipientStatus,
 } from '@/lib/broadcast-status';
+import { BroadcastReturn } from '@/components/broadcasts/broadcast-return';
 
 interface StatCardProps {
   label: string;
@@ -394,6 +395,14 @@ export default function BroadcastDetailPage() {
       </div>
 
       <FunnelChart steps={funnelSteps} />
+
+      {/* Return: attributed conversions / revenue / ROAS */}
+      <BroadcastReturn
+        broadcastId={broadcastId}
+        initialMsgCost={
+          (broadcast as { msg_cost?: number | null }).msg_cost ?? null
+        }
+      />
 
       {/* Recipients Table */}
       <div className="rounded-xl border border-slate-800 bg-slate-900">
