@@ -174,7 +174,9 @@ export async function GET(request: Request) {
       tpl.header_content
     ) {
       try {
-        const imgRes = await fetch(tpl.header_content as string)
+        const imgRes = await fetch(tpl.header_content as string, {
+          signal: AbortSignal.timeout(15_000),
+        })
         if (!imgRes.ok) throw new Error(`header fetch ${imgRes.status}`)
         const buf = Buffer.from(await imgRes.arrayBuffer())
         const mime = imgRes.headers.get('content-type') || 'image/jpeg'

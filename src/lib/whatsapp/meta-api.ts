@@ -608,6 +608,7 @@ export async function uploadMedia(args: UploadMediaArgs): Promise<string> {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}` },
     body: form,
+    signal: AbortSignal.timeout(20_000),
   })
   if (!response.ok) {
     await throwMetaError(response, `Media upload failed: ${response.status}`)
