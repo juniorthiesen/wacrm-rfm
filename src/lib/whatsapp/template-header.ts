@@ -55,3 +55,38 @@ export async function resolveTemplateHeader(
   }
   return { type: t, content: row.header_content }
 }
+
+export interface TemplateButton {
+  type: string
+  text: string
+  url?: string
+  phone_number?: string
+}
+
+/**
+ * Resolve a template's `buttons` JSONB so callers can snapshot it onto
+ * the `messages.template_buttons` column at send time — the inbox bubble
+ * then shows the offered buttons without needing to join message_templates
+ * (and stays accurate even if the template is edited/deleted later).
+ */
+export async function resolveTemplateButtons(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: SupabaseClient<any, any, any>,
+  userId: string,
+  templateName: string,
+  language?: string | null,
+): Promise<TemplateButton[] | undefined> {
+  let query = db
+    .from('message_templates')
+    .select('buttons')
+    .eq('user_id', userId)
+    .eq('name', templateName)
+  if (language) query = query.eq('language', language)
+
+  const { data } = await query.limit(1)
+  const row = data?.[0] as { buttons: TemplateButton[] | null } | undefined
+  if (!row?.buttons || !Array.isArray(row.buttons) || row.buttons.length === 0) {
+    return undefined
+  }
+  return row.buttons
+}

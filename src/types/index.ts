@@ -118,6 +118,19 @@ export interface Message {
    * cue (renders with a "↩ button reply" affordance).
    */
   interactive_reply_id?: string;
+  /**
+   * Snapshot of the sent template's `buttons` (message_templates.buttons)
+   * at send time, so the inbox can show "this had buttons" even if the
+   * template is later edited/deleted. Only set for content_type='template'.
+   */
+  template_buttons?: TemplateButton[] | null;
+}
+
+export interface TemplateButton {
+  type: string;
+  text: string;
+  url?: string;
+  phone_number?: string;
 }
 
 export type ReactionActor = 'customer' | 'agent';

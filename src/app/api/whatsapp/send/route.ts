@@ -7,7 +7,7 @@ import {
   type WaMediaType,
 } from '@/lib/whatsapp/meta-api'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
-import { resolveTemplateHeader } from '@/lib/whatsapp/template-header'
+import { resolveTemplateHeader, resolveTemplateButtons } from '@/lib/whatsapp/template-header'
 
 const WA_MEDIA_TYPES = new Set<string>(['image', 'audio', 'video', 'document', 'sticker'])
 import { supabaseAdmin } from '@/lib/flows/admin-client'
@@ -208,6 +208,18 @@ export async function POST(request: Request) {
           )
         : undefined
 
+    // Snapshot the template's buttons (if any) so the inbox bubble can
+    // show them — see messages.template_buttons (migration 044).
+    const templateButtons =
+      message_type === 'template'
+        ? await resolveTemplateButtons(
+            supabase,
+            user.id,
+            template_name,
+            template_language,
+          )
+        : undefined
+
     const attempt = async (phone: string): Promise<string> => {
       if (message_type === 'template') {
         const result = await sendTemplateMessage({
@@ -312,6 +324,7 @@ export async function POST(request: Request) {
           ? (media_id ? `/api/whatsapp/media/${media_id}` : null)
           : (media_url || null),
         template_name: template_name || null,
+        template_buttons: templateButtons ?? null,
         message_id: waMessageId,
         status: 'sent',
         reply_to_message_id: reply_to_message_id || null,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { sendTemplateMessage, uploadMedia } from '@/lib/whatsapp/meta-api'
+import type { TemplateButton } from '@/lib/whatsapp/template-header'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -70,6 +71,19 @@ function resolveParams(
         .replace(/\{\{\s*customer\.phone\s*\}\}/g, contact.phone ?? '')
       return sanitizeParam(v)
     })
+}
+
+/**
+ * Fill a template's stored body_text ({{1}}, {{2}}, …) with the same
+ * positional params sent to Meta, so the inbox mirror message has real
+ * text instead of an empty bubble.
+ */
+function renderTemplateBody(
+  body: string | null | undefined,
+  params: string[],
+): string | null {
+  if (!body) return null
+  return body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_match, n: string) => params[Number(n) - 1] ?? '')
 }
 
 export async function GET(request: Request) {
@@ -163,7 +177,7 @@ export async function GET(request: Request) {
       | undefined
     const { data: tpl } = await admin
       .from('message_templates')
-      .select('header_type, header_content')
+      .select('header_type, header_content, body_text, buttons')
       .eq('user_id', c.user_id)
       .eq('name', c.template_name)
       .eq('language', c.template_language)
@@ -207,6 +221,18 @@ export async function GET(request: Request) {
       ((contacts ?? []) as ContactRow[]).map((ct) => [ct.id, ct]),
     )
     const vars = (c.template_variables as Record<string, string> | null) ?? null
+
+    // Batch-fetch existing conversations for this batch's contacts so the
+    // per-recipient loop below doesn't issue an extra lookup query per
+    // send — only a genuinely new contact needs an insert.
+    const { data: convosForBatch } = await admin
+      .from('conversations')
+      .select('id, contact_id')
+      .eq('user_id', c.user_id)
+      .in('contact_id', (pending as ContactRef[]).map((p) => p.contact_id))
+    const conversationByContact = new Map<string, string>(
+      (convosForBatch ?? []).map((cv) => [cv.contact_id as string, cv.id as string]),
+    )
 
     for (const row of pending) {
       const contact = byId.get(row.contact_id as string)
@@ -252,6 +278,50 @@ export async function GET(request: Request) {
           })
           .eq('id', row.id)
         sent++
+
+        // Mirror the send into the inbox. Previously the drip only ever
+        // touched broadcast_recipients, so when a contact replied to a
+        // campaign message the conversation thread had no record of what
+        // they were replying to. Best-effort: the WhatsApp send already
+        // succeeded, so a bookkeeping failure here shouldn't fail the
+        // recipient or block the batch.
+        try {
+          let conversationId = conversationByContact.get(contact.id)
+          if (!conversationId) {
+            const { data: createdConv, error: convErr } = await admin
+              .from('conversations')
+              .insert({ user_id: c.user_id, contact_id: contact.id })
+              .select('id')
+              .single()
+            if (convErr || !createdConv) {
+              throw convErr ?? new Error('no conversation row returned')
+            }
+            conversationId = createdConv.id as string
+            conversationByContact.set(contact.id, conversationId)
+          }
+
+          const bodyText = renderTemplateBody(tpl?.body_text as string | null, params)
+          await admin.from('messages').insert({
+            conversation_id: conversationId,
+            sender_type: 'bot',
+            content_type: 'template',
+            content_text: bodyText,
+            template_name: c.template_name,
+            template_buttons: (tpl?.buttons as TemplateButton[] | null) ?? null,
+            message_id: messageId,
+            status: 'sent',
+          })
+          await admin
+            .from('conversations')
+            .update({
+              last_message_text: bodyText ?? `[template:${c.template_name}]`,
+              last_message_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', conversationId)
+        } catch (err) {
+          console.error('[broadcast-drip] inbox mirror failed:', err)
+        }
       } else {
         await admin
           .from('broadcast_recipients')

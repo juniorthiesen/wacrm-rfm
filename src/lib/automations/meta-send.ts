@@ -1,5 +1,5 @@
 import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
-import { resolveTemplateHeader } from '@/lib/whatsapp/template-header'
+import { resolveTemplateHeader, resolveTemplateButtons } from '@/lib/whatsapp/template-header'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
   sanitizePhoneForMeta,
@@ -137,6 +137,18 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         )
       : undefined
 
+  // Snapshot the template's buttons (if any) so the inbox bubble can
+  // show them — see messages.template_buttons (migration 044).
+  const templateButtons =
+    input.kind === 'template'
+      ? await resolveTemplateButtons(
+          db,
+          input.userId,
+          input.templateName,
+          resolvedLanguage,
+        )
+      : undefined
+
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
       const r = await sendTemplateMessage({
@@ -248,6 +260,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     content_type,
     content_text,
     template_name,
+    template_buttons: templateButtons ?? null,
     message_id: waMessageId,
     status: 'sent',
   })

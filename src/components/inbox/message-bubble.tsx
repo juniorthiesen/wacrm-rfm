@@ -13,6 +13,9 @@ import {
   LayoutTemplate,
   ImageOff,
   CornerDownLeft,
+  Link as LinkIcon,
+  Phone,
+  MessageSquare,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -201,6 +204,27 @@ function MessageContent({ message }: { message: Message }) {
             <p className="mt-1 whitespace-pre-wrap break-words text-sm">
               {message.content_text}
             </p>
+          )}
+          {message.template_buttons && message.template_buttons.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1 border-t border-white/15 pt-2">
+              {message.template_buttons.map((btn, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-1.5 rounded-md bg-black/10 px-2 py-1 text-xs font-medium"
+                >
+                  {btn.type === "URL" && (
+                    <LinkIcon className="h-3 w-3 shrink-0" />
+                  )}
+                  {btn.type === "PHONE_NUMBER" && (
+                    <Phone className="h-3 w-3 shrink-0" />
+                  )}
+                  {btn.type !== "URL" && btn.type !== "PHONE_NUMBER" && (
+                    <MessageSquare className="h-3 w-3 shrink-0" />
+                  )}
+                  <span className="truncate">{btn.text}</span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       );
