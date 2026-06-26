@@ -32,6 +32,8 @@ import {
   Download,
   ChevronDown,
   Trash2,
+  Pause,
+  Play,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -156,6 +158,8 @@ export default function BroadcastDetailPage() {
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [pausing, setPausing] = useState(false);
+  const [resuming, setResuming] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -244,6 +248,42 @@ export default function BroadcastDetailPage() {
     router.push('/broadcasts');
   }
 
+  // Pausing just flips status off 'sending' — the drip cron only ever
+  // queries status='sending' (see /api/broadcasts/drip), so this is
+  // enough to stop it being drained. Resuming flips it back; the next
+  // cron tick picks the campaign back up where it left off.
+  async function handlePause() {
+    setPausing(true);
+    const supabase = createClient();
+    const { error: pauseErr } = await supabase
+      .from('broadcasts')
+      .update({ status: 'paused' })
+      .eq('id', broadcastId);
+    setPausing(false);
+    if (pauseErr) {
+      toast.error(`Failed to pause: ${pauseErr.message}`);
+      return;
+    }
+    setBroadcast((b) => (b ? { ...b, status: 'paused' } : b));
+    toast.success('Broadcast paused');
+  }
+
+  async function handleResume() {
+    setResuming(true);
+    const supabase = createClient();
+    const { error: resumeErr } = await supabase
+      .from('broadcasts')
+      .update({ status: 'sending' })
+      .eq('id', broadcastId);
+    setResuming(false);
+    if (resumeErr) {
+      toast.error(`Failed to resume: ${resumeErr.message}`);
+      return;
+    }
+    setBroadcast((b) => (b ? { ...b, status: 'sending' } : b));
+    toast.success('Broadcast resumed');
+  }
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -304,48 +344,80 @@ export default function BroadcastDetailPage() {
           </div>
         </div>
 
-        {/* Delete — inline-confirm pattern matches the pipeline-settings
-            "Delete Pipeline" flow. Mid-send broadcasts can't be deleted
-            because orphaning in-flight Meta messages would leave the
-            funnel inconsistent. */}
-        {confirmDelete ? (
-          <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
-            <span className="text-red-300">Delete this broadcast?</span>
+        <div className="flex items-center gap-2">
+          {/* Pause/Resume — pausing just moves status off 'sending', which
+              the drip cron treats as "skip this campaign" with zero other
+              code changes (see /api/broadcasts/drip). */}
+          {broadcast.status === 'sending' && (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setConfirmDelete(false)}
-              disabled={deleting}
-              className="h-7 border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800"
+              onClick={handlePause}
+              disabled={pausing}
+              title="Pause sending — resume later from where it left off"
+              className="border-orange-500/30 bg-transparent text-orange-400 hover:bg-orange-500/10 disabled:opacity-40"
             >
-              Cancel
+              <Pause className="h-3.5 w-3.5" />
+              {pausing ? 'Pausing…' : 'Pause'}
             </Button>
+          )}
+          {broadcast.status === 'paused' && (
             <Button
+              variant="outline"
               size="sm"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="h-7 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              onClick={handleResume}
+              disabled={resuming}
+              title="Resume sending"
+              className="border-primary/30 bg-transparent text-primary hover:bg-primary/10 disabled:opacity-40"
             >
-              {deleting ? 'Deleting…' : 'Confirm'}
+              <Play className="h-3.5 w-3.5" />
+              {resuming ? 'Resuming…' : 'Resume'}
             </Button>
-          </div>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={broadcast.status === 'sending'}
-            onClick={() => setConfirmDelete(true)}
-            title={
-              broadcast.status === 'sending'
-                ? 'Cannot delete while a broadcast is actively sending'
-                : 'Delete this broadcast'
-            }
-            className="border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10 disabled:opacity-40"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Delete
-          </Button>
-        )}
+          )}
+
+          {/* Delete — inline-confirm pattern matches the pipeline-settings
+              "Delete Pipeline" flow. Mid-send or paused broadcasts can't be
+              deleted because orphaning in-flight Meta messages would leave
+              the funnel inconsistent. */}
+          {confirmDelete ? (
+            <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
+              <span className="text-red-300">Delete this broadcast?</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+                className="h-7 border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="h-7 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Confirm'}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={broadcast.status === 'sending' || broadcast.status === 'paused'}
+              onClick={() => setConfirmDelete(true)}
+              title={
+                broadcast.status === 'sending' || broadcast.status === 'paused'
+                  ? 'Cannot delete while a broadcast is sending or paused'
+                  : 'Delete this broadcast'
+              }
+              className="border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10 disabled:opacity-40"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats — 6 cards: Total / Sent / Delivered / Read / Replied / Failed */}
