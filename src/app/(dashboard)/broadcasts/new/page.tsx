@@ -43,26 +43,152 @@ export default function NewBroadcastPage() {
   const [name, setName] = useState('');
 
   // Pre-fill audience from a retargeting redirect (broadcast detail page).
-  // The retarget key is set in sessionStorage by BroadcastRetargeting and
-  // consumed here exactly once — cleaned up immediately so a back-nav
-  // doesn't re-apply the same audience unexpectedly.
+  // The retarget key is stored in sessionStorage by BroadcastRetargeting
+  // and consumed exactly once here — removed immediately so a back-nav
+  // doesn't re-apply the stale audience.
+  //
+  // Two shapes in sessionStorage:
+  //   • { contacts, label }                         → CSV audience (per-status segments)
+  //   • { type:'next_batch', audience_filter,        → resolve filter, subtract already-
+  //       exclude_broadcast_id, label }                sent contacts, pass result as CSV
   useEffect(() => {
     const key = searchParams.get('retarget');
     if (!key) return;
+
+    let raw: string | null = null;
     try {
-      const raw = sessionStorage.getItem(key);
+      raw = sessionStorage.getItem(key);
       if (!raw) return;
       sessionStorage.removeItem(key);
-      const { contacts, label } = JSON.parse(raw) as {
+    } catch {
+      return;
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+
+    if (parsed.type === 'next_batch') {
+      // Resolve the original audience filter minus already-sent contacts.
+      void (async () => {
+        try {
+          const supabase = createClient();
+          const filter = parsed.audience_filter as {
+            type: 'all' | 'tags' | 'custom_field';
+            tagIds?: string[];
+            customField?: {
+              fieldId: string;
+              operator: 'is' | 'is_not' | 'contains';
+              value: string;
+            };
+            excludeTagIds?: string[];
+          } | null;
+          const excludeBroadcastId = parsed.exclude_broadcast_id as string | undefined;
+
+          if (!filter) return;
+
+          // 1. Fetch contact_ids already in the source broadcast.
+          const alreadySent = new Set<string>();
+          if (excludeBroadcastId) {
+            const { data: sent } = await supabase
+              .from('broadcast_recipients')
+              .select('contact_id')
+              .eq('broadcast_id', excludeBroadcastId);
+            for (const r of sent ?? []) {
+              if (r.contact_id) alreadySent.add(r.contact_id);
+            }
+          }
+
+          // 2. Resolve the filter to a contact list (mirrors resolveAudience
+          //    in use-broadcast-sending.ts but only needs phone+name).
+          let contactRows: { id: string; phone: string; name?: string | null }[] = [];
+          if (filter.type === 'all') {
+            const { data } = await supabase
+              .from('contacts')
+              .select('id, phone, name');
+            contactRows = data ?? [];
+          } else if (filter.type === 'tags' && filter.tagIds?.length) {
+            const { data: ctRows } = await supabase
+              .from('contact_tags')
+              .select('contact_id')
+              .in('tag_id', filter.tagIds);
+            const ids = [...new Set((ctRows ?? []).map((r) => r.contact_id))];
+            if (ids.length > 0) {
+              const { data } = await supabase
+                .from('contacts')
+                .select('id, phone, name')
+                .in('id', ids);
+              contactRows = data ?? [];
+            }
+          } else if (filter.type === 'custom_field' && filter.customField) {
+            const { fieldId, operator, value } = filter.customField;
+            let q = supabase
+              .from('contact_custom_values')
+              .select('contact_id')
+              .eq('custom_field_id', fieldId);
+            if (operator === 'is') q = q.eq('value', value);
+            else if (operator === 'is_not') q = q.neq('value', value);
+            else q = q.ilike('value', `%${value}%`);
+            const { data: matches } = await q;
+            const ids = [...new Set((matches ?? []).map((m) => m.contact_id))];
+            if (ids.length > 0) {
+              const { data } = await supabase
+                .from('contacts')
+                .select('id, phone, name')
+                .in('id', ids);
+              contactRows = data ?? [];
+            }
+          }
+
+          // 3. Apply excludeTagIds from the original filter.
+          if (filter.excludeTagIds?.length) {
+            const { data: excRows } = await supabase
+              .from('contact_tags')
+              .select('contact_id')
+              .in('tag_id', filter.excludeTagIds);
+            const excIds = new Set((excRows ?? []).map((r) => r.contact_id));
+            contactRows = contactRows.filter((c) => !excIds.has(c.id));
+          }
+
+          // 4. Subtract already-sent contacts.
+          const remaining = contactRows.filter((c) => !alreadySent.has(c.id));
+
+          if (remaining.length === 0) {
+            toast.info('Nenhum contato novo no filtro desde o último envio.');
+            return;
+          }
+
+          setAudience({
+            type: 'csv',
+            csvContacts: remaining.map((c) => ({
+              phone: c.phone,
+              name: c.name ?? undefined,
+            })),
+          });
+          setName((parsed.label as string | undefined) ?? '');
+        } catch (err) {
+          console.error('[retarget next_batch]', err);
+          toast.error('Não foi possível carregar a audiência do lote anterior.');
+        }
+      })();
+      return;
+    }
+
+    // Legacy shape: { contacts, label }
+    try {
+      const { contacts, label } = parsed as {
         contacts: { phone: string; name?: string }[];
         label: string;
       };
-      if (contacts.length > 0) {
+      if (Array.isArray(contacts) && contacts.length > 0) {
         setAudience({ type: 'csv', csvContacts: contacts });
-        setName(label);
+        setName(label ?? '');
       }
     } catch {
-      // Malformed entry — ignore.
+      // Malformed — ignore.
     }
   }, [searchParams]);
 
