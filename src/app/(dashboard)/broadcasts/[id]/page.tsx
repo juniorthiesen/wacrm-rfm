@@ -41,6 +41,7 @@ import {
   getRecipientStatus,
 } from '@/lib/broadcast-status';
 import { BroadcastReturn } from '@/components/broadcasts/broadcast-return';
+import { BroadcastRetargeting } from '@/components/broadcasts/broadcast-retargeting';
 
 interface StatCardProps {
   label: string;
@@ -475,6 +476,8 @@ export default function BroadcastDetailPage() {
           (broadcast as { msg_cost?: number | null }).msg_cost ?? null
         }
       />
+
+      <BroadcastRetargeting recipients={recipients} broadcastName={broadcast.name} />
 
       {/* Recipients Table */}
       <div className="rounded-xl border border-slate-800 bg-slate-900">

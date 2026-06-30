@@ -219,6 +219,7 @@ export default function BroadcastsPage() {
                 </TableHead>
                 <TableHead className="hidden text-slate-400 lg:table-cell">Delivery</TableHead>
                 <TableHead className="hidden text-slate-400 lg:table-cell">Read</TableHead>
+                <TableHead className="hidden text-slate-400 xl:table-cell">Reply</TableHead>
                 <TableHead className="text-slate-400">{t("broadcasts.statusCol")}</TableHead>
                 <TableHead className="hidden text-slate-400 sm:table-cell">{t("broadcasts.createdCol")}</TableHead>
               </TableRow>
@@ -253,6 +254,13 @@ export default function BroadcastsPage() {
                         value={broadcast.read_count}
                         total={broadcast.total_recipients}
                         color="bg-blue-500"
+                      />
+                    </TableCell>
+                    <TableCell className="hidden xl:table-cell">
+                      <RateCell
+                        value={broadcast.replied_count}
+                        total={broadcast.total_recipients}
+                        color="bg-indigo-500"
                       />
                     </TableCell>
                     <TableCell>

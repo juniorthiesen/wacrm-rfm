@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { MessageTemplate } from '@/types';
@@ -21,6 +21,7 @@ const steps = [
 
 export default function NewBroadcastPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { createAndSendBroadcast, isProcessing, progress } = useBroadcastSending();
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -40,6 +41,30 @@ export default function NewBroadcastPage() {
     Record<string, { type: 'static' | 'field' | 'custom_field'; value: string }>
   >({});
   const [name, setName] = useState('');
+
+  // Pre-fill audience from a retargeting redirect (broadcast detail page).
+  // The retarget key is set in sessionStorage by BroadcastRetargeting and
+  // consumed here exactly once — cleaned up immediately so a back-nav
+  // doesn't re-apply the same audience unexpectedly.
+  useEffect(() => {
+    const key = searchParams.get('retarget');
+    if (!key) return;
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return;
+      sessionStorage.removeItem(key);
+      const { contacts, label } = JSON.parse(raw) as {
+        contacts: { phone: string; name?: string }[];
+        label: string;
+      };
+      if (contacts.length > 0) {
+        setAudience({ type: 'csv', csvContacts: contacts });
+        setName(label);
+      }
+    } catch {
+      // Malformed entry — ignore.
+    }
+  }, [searchParams]);
 
   async function handleSend() {
     if (!template) return;
