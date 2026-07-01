@@ -52,13 +52,14 @@ interface Filters {
   birthdayMonth: string
   includeTagIds: string[]
   excludeTagIds: string[]
+  notContactedDays: string
 }
 
 const EMPTY_FILTERS: Filters = {
   segments: [], minRecency: "", maxRecency: "", minMonetary: "", maxMonetary: "",
   minFrequency: "", maxFrequency: "", minAvgTicket: "", maxAvgTicket: "",
   productLike: "", productNotLike: "", firstOrderAfter: "", firstOrderBefore: "",
-  birthdayMonth: "", includeTagIds: [], excludeTagIds: [],
+  birthdayMonth: "", includeTagIds: [], excludeTagIds: [], notContactedDays: "",
 }
 
 interface AudienceRow {
@@ -105,6 +106,7 @@ function buildArgs(userId: string, f: Filters) {
     p_birthday_month: f.birthdayMonth ? Number(f.birthdayMonth) : null,
     p_include_tag_ids: f.includeTagIds.length ? f.includeTagIds : null,
     p_exclude_tag_ids: f.excludeTagIds.length ? f.excludeTagIds : null,
+    p_not_contacted_days: num(f.notContactedDays),
   }
 }
 
@@ -385,6 +387,20 @@ export default function AudiencesPage() {
 
             <TagPicker label="Com as tags" tags={tags} selected={filters.includeTagIds} onChange={(v) => set("includeTagIds", v)} />
             <TagPicker label="Sem as tags" tags={tags} selected={filters.excludeTagIds} onChange={(v) => set("excludeTagIds", v)} />
+
+            <div>
+              <label className="mb-1.5 block text-xs text-slate-400">Não contactado nos últimos (dias)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={1} placeholder="ex: 7"
+                  className={fieldClass}
+                  value={filters.notContactedDays}
+                  onChange={(e) => set("notContactedDays", e.target.value)}
+                />
+                <span className="text-xs text-slate-500 whitespace-nowrap">dias</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-600">Exclui quem já recebeu campanha nesse período</p>
+            </div>
           </div>
 
           {/* Sampling */}
