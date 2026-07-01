@@ -93,6 +93,14 @@ export function WooCommercePanel() {
       ? `${window.location.origin}/api/integrations/woocommerce/webhook?user_id=${userId}`
       : ""
 
+  // Magic-login / SmartCheckout URL includes the token in the query string
+  // because custom WP theme hooks can't sign with HMAC — token auth is the
+  // only option. This URL must be kept secret (it carries the shared secret).
+  const magicLoginUrl =
+    typeof window !== "undefined" && userId && config.webhook_secret
+      ? `${window.location.origin}/api/integrations/woocommerce/webhook?user_id=${userId}&token=${config.webhook_secret}`
+      : ""
+
   async function save(payload: Partial<WooConfig> & { regenerate_secret?: boolean }) {
     setSaving(true)
     try {
@@ -446,6 +454,42 @@ export function WooCommercePanel() {
               <li>Salva</li>
             </ol>
           </div>
+
+          {/* Magic-login URL — separate section because it uses a different
+              auth mechanism (?token= in the URL instead of HMAC header).
+              Only show after a secret has been generated. */}
+          {config.webhook_secret && (
+            <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs">
+              <p className="mb-2 font-medium text-amber-300">
+                SmartCheckout / Loja5 — Magic Login
+              </p>
+              <p className="mb-3 text-amber-200/70">
+                O plugin do SmartCheckout não assina requisições com HMAC — ele
+                usa uma URL com o token embutido. Cole a URL abaixo no campo de
+                webhook do plugin (não a URL padrão acima).
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  value={magicLoginUrl}
+                  readOnly
+                  className="bg-slate-900 font-mono text-xs text-amber-100"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => copyToClipboard(magicLoginUrl, "URL Magic Login")}
+                  className="shrink-0 border-amber-500/30 bg-slate-900"
+                  aria-label="Copy Magic Login URL"
+                >
+                  <Copy className="h-4 w-4 text-amber-300" />
+                </Button>
+              </div>
+              <p className="mt-2 text-amber-200/50">
+                ⚠️ Esta URL contém o secret — não compartilhe publicamente.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
