@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Users, Download, Send, Loader2, X } from "lucide-react"
+import { Users, Download, Send, Loader2, X, Save, BookOpen } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 
@@ -77,6 +77,7 @@ interface AudienceRow {
 
 interface TagRow { id: string; name: string }
 interface TemplateRow { name: string; language: string | null; body_text: string | null; status: string | null }
+interface SavedAudience { id: string; name: string; filters: Filters }
 
 const num = (s: string): number | null => {
   const t = s.trim()
@@ -128,6 +129,11 @@ export default function AudiencesPage() {
   const [exporting, setExporting] = useState(false)
   const [showBroadcast, setShowBroadcast] = useState(false)
 
+  const [savedAudiences, setSavedAudiences] = useState<SavedAudience[]>([])
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [saveName, setSaveName] = useState("")
+  const [saving, setSaving] = useState(false)
+
   // Sampling
   const [sampleMode, setSampleMode] = useState<"all" | "percent" | "limit">("all")
   const [samplePercent, setSamplePercent] = useState("10")
@@ -144,6 +150,11 @@ export default function AudiencesPage() {
       setUserId(data.session?.user?.id ?? null)
       const { data: tagRows } = await supabase.from("tags").select("id, name").order("name")
       setTags((tagRows as TagRow[]) ?? [])
+      const { data: savedRows } = await supabase
+        .from("saved_audiences")
+        .select("id, name, filters")
+        .order("created_at", { ascending: false })
+      setSavedAudiences((savedRows as SavedAudience[]) ?? [])
     })()
   }, [supabase])
 
@@ -225,6 +236,35 @@ export default function AudiencesPage() {
 
   const sampling = { sampleMode, samplePercent, sampleLimit, rank }
 
+  async function handleSaveAudience() {
+    if (!saveName.trim() || !userId) return
+    setSaving(true)
+    try {
+      const { data, error } = await supabase
+        .from("saved_audiences")
+        .insert({ user_id: userId, name: saveName.trim(), filters })
+        .select("id, name, filters")
+        .single()
+      if (error) throw error
+      setSavedAudiences((prev) => [data as SavedAudience, ...prev])
+      toast.success(`Público "${saveName.trim()}" salvo`)
+      setShowSaveModal(false)
+      setSaveName("")
+    } catch (err) {
+      console.error("[audiences] save failed:", err)
+      toast.error("Falha ao salvar público")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDeleteSaved(id: string, name: string) {
+    const { error } = await supabase.from("saved_audiences").delete().eq("id", id)
+    if (error) { toast.error("Falha ao remover"); return }
+    setSavedAudiences((prev) => prev.filter((a) => a.id !== id))
+    toast.success(`"${name}" removido`)
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -244,6 +284,41 @@ export default function AudiencesPage() {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Saved audiences bar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <BookOpen className="h-4 w-4 shrink-0 text-slate-500" />
+        <span className="text-xs text-slate-500">Salvos:</span>
+        {savedAudiences.length === 0 && (
+          <span className="text-xs text-slate-600">nenhum ainda</span>
+        )}
+        {savedAudiences.map((a) => (
+          <div key={a.id} className="flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800 pl-3 pr-1 py-1">
+            <button
+              onClick={() => setFilters(a.filters)}
+              className="text-xs text-slate-300 hover:text-white"
+            >
+              {a.name}
+            </button>
+            <button
+              onClick={() => handleDeleteSaved(a.id, a.name)}
+              className="rounded-full p-0.5 text-slate-600 hover:text-red-400"
+              aria-label={`Remover ${a.name}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowSaveModal(true)}
+          className="border-slate-700 bg-slate-800 text-xs text-slate-300"
+        >
+          <Save className="h-3.5 w-3.5" />
+          Salvar filtro atual
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -420,6 +495,40 @@ export default function AudiencesPage() {
           onCreated={(id) => router.push(`/broadcasts/${id}`)}
         />
       )}
+
+      {/* Save audience modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowSaveModal(false)}>
+          <div className="w-full max-w-sm rounded-xl border border-slate-800 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-white">Salvar público</h2>
+              <button onClick={() => setShowSaveModal(false)} className="text-slate-500 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mt-1 text-sm text-slate-400">
+              Dê um nome para este filtro. Ele vai aparecer na barra de públicos salvos para reutilizar em qualquer campanha.
+            </p>
+            <input
+              className={`${fieldClass} mt-4`}
+              placeholder="ex.: Hibernando &gt; R$200, sem Calça"
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleSaveAudience() }}
+              autoFocus
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" className="border-slate-700 bg-slate-800" onClick={() => setShowSaveModal(false)}>
+                Cancelar
+              </Button>
+              <Button disabled={!saveName.trim() || saving} onClick={() => void handleSaveAudience()}>
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Salvar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -542,6 +651,16 @@ function BroadcastModal({ supabase, userId, filters, sampling, targetCount, onCl
       })
       if (error) throw error
       const result = Array.isArray(data) ? data[0] : data
+
+      // Persist the filter config so "próximo lote" and audience reuse can
+      // reconstruct this audience later (audience_filter was empty before).
+      if (result?.broadcast_id) {
+        await supabase
+          .from("broadcasts")
+          .update({ audience_filter: { source: "audiences_page", filters } })
+          .eq("id", result.broadcast_id)
+      }
+
       toast.success(`Transmissão criada — ${result?.total_recipients ?? 0} destinatários`)
       onCreated(result?.broadcast_id)
     } catch (err) {
