@@ -29,6 +29,12 @@ export const maxDuration = 60
 // tip past 60s when Meta latency rose, killing the function mid-batch.)
 const MAX_PER_RUN = 80
 
+// Global per-contact frequency cap. When > 0, contacts who already received
+// any broadcast from this user in the last N days are skipped (status →
+// 'failed', error 'frequency_cap'). Set BROADCAST_FREQ_CAP_DAYS=7 in env
+// to enable. Default 0 = no cap (preserves existing behaviour).
+const FREQ_CAP_DAYS = Number(process.env.BROADCAST_FREQ_CAP_DAYS ?? '0')
+
 interface ContactRow {
   id: string
   phone: string | null
@@ -222,6 +228,31 @@ export async function GET(request: Request) {
     )
     const vars = (c.template_variables as Record<string, string> | null) ?? null
 
+    // Frequency cap: one batch lookup to find contacts recently messaged by
+    // this user across ALL their campaigns. Avoids N individual queries.
+    const cappedContactIds = new Set<string>()
+    if (FREQ_CAP_DAYS > 0) {
+      const capSince = new Date(Date.now() - FREQ_CAP_DAYS * 24 * 60 * 60 * 1000).toISOString()
+      const batchContactIds = (pending as ContactRef[]).map((p) => p.contact_id)
+      // Step 1: broadcast ids belonging to this user (excluding the current one
+      // so a contact can always appear in the campaign they were already queued for).
+      const { data: userBroadcasts } = await admin
+        .from('broadcasts')
+        .select('id')
+        .eq('user_id', c.user_id)
+        .neq('id', c.id)
+      const userBroadcastIds = (userBroadcasts ?? []).map((b) => b.id as string)
+      if (userBroadcastIds.length > 0) {
+        const { data: recent } = await admin
+          .from('broadcast_recipients')
+          .select('contact_id')
+          .in('broadcast_id', userBroadcastIds)
+          .in('contact_id', batchContactIds)
+          .gte('sent_at', capSince)
+        for (const r of recent ?? []) cappedContactIds.add(r.contact_id as string)
+      }
+    }
+
     // Batch-fetch existing conversations for this batch's contacts so the
     // per-recipient loop below doesn't issue an extra lookup query per
     // send — only a genuinely new contact needs an insert.
@@ -235,6 +266,15 @@ export async function GET(request: Request) {
     )
 
     for (const row of pending) {
+      if (cappedContactIds.has(row.contact_id as string)) {
+        await admin
+          .from('broadcast_recipients')
+          .update({ status: 'failed', error_message: 'frequency_cap' })
+          .eq('id', row.id)
+        failed++
+        continue
+      }
+
       const contact = byId.get(row.contact_id as string)
       const sanitized = contact?.phone ? sanitizePhoneForMeta(contact.phone) : ''
       if (!contact || !isValidE164(sanitized)) {
