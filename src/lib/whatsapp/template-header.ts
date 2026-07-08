@@ -53,6 +53,15 @@ export async function resolveTemplateHeader(
   if (t !== 'image' && t !== 'video' && t !== 'document' && t !== 'text') {
     return undefined
   }
+  // A text header only carries a Meta parameter when it has a {{n}}
+  // placeholder. Static text headers (e.g. "DLY Lingerie") take zero
+  // components — sending one anyway trips Meta's #132000 "number of
+  // parameters does not match" because the approved template expects
+  // none. Media headers (image/video/document) always need their
+  // component regardless of placeholders, since the header IS the media.
+  if (t === 'text' && !/\{\{\s*\d+\s*\}\}/.test(row.header_content)) {
+    return undefined
+  }
   return { type: t, content: row.header_content }
 }
 
