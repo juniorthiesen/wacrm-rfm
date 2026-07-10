@@ -276,6 +276,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       last_message_text:
         input.kind === 'template' ? `[template:${input.templateName}]` : input.text,
       last_message_at: new Date().toISOString(),
+      last_message_sender_type: 'bot',
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversationId)

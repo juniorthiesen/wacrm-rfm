@@ -356,6 +356,7 @@ export async function GET(request: Request) {
             .update({
               last_message_text: bodyText ?? `[template:${c.template_name}]`,
               last_message_at: new Date().toISOString(),
+              last_message_sender_type: 'bot',
               updated_at: new Date().toISOString(),
             })
             .eq('id', conversationId)

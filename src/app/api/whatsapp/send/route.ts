@@ -349,6 +349,7 @@ export async function POST(request: Request) {
           document: '📎 Documento', sticker: '😊 Sticker',
         }[message_type as string] || `[${message_type}]`,
         last_message_at: new Date().toISOString(),
+        last_message_sender_type: 'agent',
         updated_at: new Date().toISOString(),
       })
       .eq('id', conversation_id)

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus } from "@/types";
-import { Search, ChevronDown, Mail, MailOpen } from "lucide-react";
+import { Search, ChevronDown, Mail, MailOpen, Megaphone } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR, enUS } from "date-fns/locale";
 import { useTranslation } from "@/hooks/use-translation";
@@ -68,6 +68,12 @@ export function ConversationList({
   // template replies into "Open" at once, burying the threads that still
   // need a first read. Combines with both the status filter and search.
   const [unreadOnly, setUnreadOnly] = useState(false);
+  // A broadcast blast bumps last_message_at for every recipient even
+  // though nobody replied, burying real conversations under hundreds of
+  // one-way campaign sends. Hidden by default; toggle reveals them.
+  // Conversations manually flagged unread (see onToggleUnread) stay
+  // visible regardless — that's an explicit signal to keep an eye on it.
+  const [showCampaigns, setShowCampaigns] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Keep the latest callback in a ref so the fetch effect below can
@@ -131,6 +137,19 @@ export function ConversationList({
     [conversations],
   );
 
+  // A conversation is "campaign noise" when the bot sent the last message
+  // and nobody has flagged it back to attention (unread_count > 0 — either
+  // a genuine reply that hasn't reset it yet, or a manual mark-as-unread).
+  const isCampaignNoise = useCallback(
+    (c: Conversation) => c.last_message_sender_type === "bot" && c.unread_count === 0,
+    [],
+  );
+
+  const hiddenCampaignCount = useMemo(
+    () => conversations.filter(isCampaignNoise).length,
+    [conversations, isCampaignNoise],
+  );
+
   const filtered = useMemo(() => {
     let result = conversations;
 
@@ -140,6 +159,10 @@ export function ConversationList({
 
     if (unreadOnly) {
       result = result.filter((c) => c.unread_count > 0);
+    }
+
+    if (!showCampaigns) {
+      result = result.filter((c) => !isCampaignNoise(c));
     }
 
     if (search.trim()) {
@@ -161,7 +184,7 @@ export function ConversationList({
       const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
       return tb - ta;
     });
-  }, [conversations, filter, unreadOnly, search]);
+  }, [conversations, filter, unreadOnly, showCampaigns, isCampaignNoise, search]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -252,6 +275,25 @@ export function ConversationList({
                 )}
               >
                 {unreadCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowCampaigns((v) => !v)}
+            className={cn(
+              "inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs transition-colors",
+              showCampaigns
+                ? "bg-primary/15 text-primary"
+                : "text-slate-400 hover:bg-slate-800 hover:text-white"
+            )}
+          >
+            <Megaphone className="h-3 w-3" />
+            {t("inbox.campaigns")}
+            {!showCampaigns && hiddenCampaignCount > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-700 px-1 text-[10px] font-bold text-slate-300">
+                {hiddenCampaignCount}
               </span>
             )}
           </button>

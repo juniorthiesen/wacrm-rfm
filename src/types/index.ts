@@ -79,6 +79,12 @@ export interface Conversation {
   assigned_agent_id?: string;
   last_message_text?: string;
   last_message_at?: string;
+  /**
+   * sender_type of the most recent message, denormalized so the inbox
+   * list can filter out campaign/automation noise ('bot') without an
+   * N+1 lookup into messages per row.
+   */
+  last_message_sender_type?: SenderType;
   unread_count: number;
   created_at: string;
   updated_at: string;
