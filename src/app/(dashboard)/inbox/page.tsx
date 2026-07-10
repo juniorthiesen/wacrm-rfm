@@ -480,6 +480,36 @@ export default function InboxPage() {
     [],
   );
 
+  /**
+   * Manual unread toggle from the list. Marking the currently-open thread
+   * unread needs a deselect first — MessageThread's read-reset effect
+   * zeroes unread_count the instant it sees `hasUnread` true on the active
+   * conversation, which would otherwise clobber this update within the
+   * same tick.
+   */
+  const handleToggleUnread = useCallback(
+    (conv: Conversation) => {
+      const nextUnread = conv.unread_count > 0 ? 0 : 1;
+      if (nextUnread > 0 && activeConversation?.id === conv.id) {
+        handleCloseConversation();
+      }
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conv.id ? { ...c, unread_count: nextUnread } : c,
+        ),
+      );
+      const supabase = createClient();
+      supabase
+        .from("conversations")
+        .update({ unread_count: nextUnread })
+        .eq("id", conv.id)
+        .then(({ error }) => {
+          if (error) console.error("Failed to toggle unread_count:", error);
+        });
+    },
+    [activeConversation, handleCloseConversation],
+  );
+
   const handleAssignChange = useCallback(
     (conversationId: string, assignedAgentId: string | null) => {
       setConversations((prev) =>
@@ -535,6 +565,7 @@ export default function InboxPage() {
             onSelect={handleSelectConversation}
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
+            onToggleUnread={handleToggleUnread}
             resyncToken={resyncToken}
           />
         </div>

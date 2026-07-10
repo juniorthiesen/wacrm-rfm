@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus } from "@/types";
-import { Search, ChevronDown, Mail } from "lucide-react";
+import { Search, ChevronDown, Mail, MailOpen } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR, enUS } from "date-fns/locale";
 import { useTranslation } from "@/hooks/use-translation";
@@ -22,6 +22,14 @@ interface ConversationListProps {
   onSelect: (conversation: Conversation) => void;
   conversations: Conversation[];
   onConversationsLoaded: (conversations: Conversation[]) => void;
+  /**
+   * Flip a conversation's unread badge on/off from the list, without
+   * opening the thread. The parent owns this (rather than a local DB
+   * write here) because marking the currently-active conversation
+   * unread also needs to deselect it — MessageThread's read-reset
+   * effect would otherwise zero the badge back out immediately.
+   */
+  onToggleUnread: (conversation: Conversation) => void;
   /**
    * Increment to force the fetch effect below to refire. The parent
    * bumps this on realtime reconnect / tab visibility → visible so the
@@ -49,6 +57,7 @@ export function ConversationList({
   onSelect,
   conversations,
   onConversationsLoaded,
+  onToggleUnread,
   resyncToken = 0,
 }: ConversationListProps) {
   const { locale, t } = useTranslation();
@@ -269,6 +278,7 @@ export function ConversationList({
                 conversation={conv}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                onToggleUnread={onToggleUnread}
               />
             ))}
           </div>
@@ -282,12 +292,14 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  onToggleUnread: (conversation: Conversation) => void;
 }
 
 function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  onToggleUnread,
 }: ConversationItemProps) {
   const { locale, t } = useTranslation();
   const dateLocale = locale === "pt-BR" ? ptBR : enUS;
@@ -299,6 +311,26 @@ function ConversationItem({
     onSelect(conversation);
   }, [onSelect, conversation]);
 
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onSelect(conversation);
+      }
+    },
+    [onSelect, conversation],
+  );
+
+  // Nested inside a row that's itself a button-like element — stop the
+  // click from also selecting the conversation.
+  const handleToggleUnreadClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onToggleUnread(conversation);
+    },
+    [onToggleUnread, conversation],
+  );
+
   const timeAgo = conversation.last_message_at
     ? formatDistanceToNow(new Date(conversation.last_message_at), {
         addSuffix: false,
@@ -306,11 +338,18 @@ function ConversationItem({
       })
     : "";
 
+  const isUnread = conversation.unread_count > 0;
+
   return (
-    <button
+    // A nested <button> (the unread toggle below) inside a native <button>
+    // is invalid HTML, so the row itself is a div with button semantics.
+    <div
+      role="button"
+      tabIndex={0}
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
       className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-slate-800/50",
+        "group flex w-full cursor-pointer items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-slate-800/50",
         isActive && "border-l-2 border-primary bg-slate-800/70"
       )}
     >
@@ -340,11 +379,27 @@ function ConversationItem({
             {conversation.last_message_text || t("inbox.noMessages")}
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
-            {conversation.unread_count > 0 && (
+            {isUnread && (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
                 {conversation.unread_count}
               </span>
             )}
+            <button
+              type="button"
+              onClick={handleToggleUnreadClick}
+              className={cn(
+                "flex h-4 w-4 items-center justify-center rounded-full text-slate-400 opacity-0 transition-opacity hover:text-white group-hover:opacity-100 focus-visible:opacity-100",
+                isUnread && "opacity-100"
+              )}
+              aria-label={isUnread ? t("inbox.markRead") : t("inbox.markUnread")}
+              title={isUnread ? t("inbox.markRead") : t("inbox.markUnread")}
+            >
+              {isUnread ? (
+                <MailOpen className="h-3 w-3" />
+              ) : (
+                <Mail className="h-3 w-3" />
+              )}
+            </button>
             <span
               className={cn(
                 "h-2 w-2 rounded-full",
@@ -355,6 +410,6 @@ function ConversationItem({
           </div>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
