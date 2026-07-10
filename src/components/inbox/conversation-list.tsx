@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus } from "@/types";
-import { Search, ChevronDown } from "lucide-react";
+import { Search, ChevronDown, Mail } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR, enUS } from "date-fns/locale";
 import { useTranslation } from "@/hooks/use-translation";
@@ -55,6 +55,10 @@ export function ConversationList({
   const dateLocale = locale === "pt-BR" ? ptBR : enUS;
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ConversationStatus | "all">("all");
+  // Orthogonal to `filter` (status) — a broadcast blast can drop dozens of
+  // template replies into "Open" at once, burying the threads that still
+  // need a first read. Combines with both the status filter and search.
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Keep the latest callback in a ref so the fetch effect below can
@@ -113,11 +117,20 @@ export function ConversationList({
     // up on any events sent while the WS was disconnected or throttled.
   }, [resyncToken]);
 
+  const unreadCount = useMemo(
+    () => conversations.filter((c) => c.unread_count > 0).length,
+    [conversations],
+  );
+
   const filtered = useMemo(() => {
     let result = conversations;
 
     if (filter !== "all") {
       result = result.filter((c) => c.status === filter);
+    }
+
+    if (unreadOnly) {
+      result = result.filter((c) => c.unread_count > 0);
     }
 
     if (search.trim()) {
@@ -139,7 +152,7 @@ export function ConversationList({
       const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
       return tb - ta;
     });
-  }, [conversations, filter, search]);
+  }, [conversations, filter, unreadOnly, search]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -181,31 +194,59 @@ export function ConversationList({
           />
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-slate-400 hover:text-white rounded-md hover:bg-slate-800">
-              {getFilterLabel(filter)}
-              <ChevronDown className="h-3 w-3" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            className="border-slate-700 bg-slate-800"
+        <div className="flex items-center gap-1.5">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-slate-400 hover:text-white rounded-md hover:bg-slate-800">
+                {getFilterLabel(filter)}
+                <ChevronDown className="h-3 w-3" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="border-slate-700 bg-slate-800"
+            >
+              {FILTER_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.value}
+                  onClick={() => setFilter(opt.value)}
+                  className={cn(
+                    "text-sm",
+                    filter === opt.value
+                      ? "text-primary"
+                      : "text-slate-300"
+                  )}
+                >
+                  {getFilterLabel(opt.value)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <button
+            type="button"
+            onClick={() => setUnreadOnly((v) => !v)}
+            className={cn(
+              "inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs transition-colors",
+              unreadOnly
+                ? "bg-primary/15 text-primary"
+                : "text-slate-400 hover:bg-slate-800 hover:text-white"
+            )}
           >
-            {FILTER_OPTIONS.map((opt) => (
-              <DropdownMenuItem
-                key={opt.value}
-                onClick={() => setFilter(opt.value)}
+            <Mail className="h-3 w-3" />
+            {t("inbox.unreadOnly")}
+            {unreadCount > 0 && (
+              <span
                 className={cn(
-                  "text-sm",
-                  filter === opt.value
-                    ? "text-primary"
-                    : "text-slate-300"
+                  "flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold",
+                  unreadOnly
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-slate-700 text-slate-300"
                 )}
               >
-                {getFilterLabel(opt.value)}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                {unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Conversation Items — native scroll with a thin custom scrollbar
