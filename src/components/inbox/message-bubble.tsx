@@ -16,6 +16,7 @@ import {
   Link as LinkIcon,
   Phone,
   MessageSquare,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -56,7 +57,15 @@ function MediaUnavailable({ label }: { label: string }) {
   );
 }
 
-function MediaImage({ url, alt }: { url: string; alt: string }) {
+function MediaImage({
+  url,
+  alt,
+  downloadName,
+}: {
+  url: string;
+  alt: string;
+  downloadName?: string;
+}) {
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -85,13 +94,18 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
 
   useEffect(() => {
     loadImage();
+  }, [loadImage]);
+
+  // Separate effect keyed on `src` itself so the cleanup always revokes the
+  // blob URL that's actually current, instead of a stale one captured by
+  // the effect above (which only re-runs when `url`/`loadImage` changes).
+  useEffect(() => {
     return () => {
       if (src?.startsWith("blob:")) {
         URL.revokeObjectURL(src);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadImage]);
+  }, [src]);
 
   if (error) {
     return (
@@ -110,12 +124,24 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
   }
 
   return (
-    <img
-      src={src ?? ""}
-      alt={alt}
-      className="max-h-64 max-w-60 rounded-lg object-cover"
-      onError={() => setError(true)}
-    />
+    <div className="group relative inline-block">
+      <img
+        src={src ?? ""}
+        alt={alt}
+        className="max-h-64 max-w-60 rounded-lg object-cover"
+        onError={() => setError(true)}
+      />
+      {src && (
+        <a
+          href={src}
+          download={downloadName ?? "imagem.jpg"}
+          title="Baixar imagem"
+          className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -132,7 +158,11 @@ function MessageContent({ message }: { message: Message }) {
       return (
         <div>
           {message.media_url ? (
-            <MediaImage url={message.media_url} alt="Shared image" />
+            <MediaImage
+              url={message.media_url}
+              alt="Shared image"
+              downloadName={`imagem-${message.id}.jpg`}
+            />
           ) : (
             <MediaUnavailable label="Image" />
           )}
