@@ -55,7 +55,13 @@ BEGIN
       jsonb_build_object(
         'type', 'URL',
         'text', 'Finalizar compra 🛒',
-        'url',  'https://dly.com.br/{{1}}'
+        'url',  'https://dly.com.br/{{1}}',
+        -- Meta rejects a URL button with a {{n}} placeholder unless an
+        -- "example" value is provided for it (rejection seen 2026-08-30:
+        -- "o componente do tipo BUTTONS não contém o(s) campo(s)
+        -- esperado(s) (example)"). Any plausible suffix works — Meta only
+        -- checks that one is present.
+        'example', jsonb_build_array('c4f8b213')
       )
     ),
     jsonb_build_object(

@@ -115,6 +115,15 @@ export async function GET(request: Request) {
 
   const summary: Array<{ broadcast_id: string; sent: number; failed: number; done: boolean }> = []
 
+  // Sends happen sequentially inside the per-campaign loop below, so with
+  // multiple campaigns 'sending' at once, letting each claim the full
+  // MAX_PER_RUN starves every campaign after the first — it alone can burn
+  // the function's 60s budget (seen 2026-08-30: a 2nd campaign got 0 sends
+  // across several runs while the 1st kept claiming 80). Split the run's
+  // budget evenly across active campaigns so all of them make progress on
+  // every tick; a single active campaign still gets the full MAX_PER_RUN.
+  const perCampaignCap = Math.max(1, Math.floor(MAX_PER_RUN / Math.max(1, (campaigns ?? []).length)))
+
   for (const c of campaigns ?? []) {
     let sent = 0
     let failed = 0
@@ -134,7 +143,7 @@ export async function GET(request: Request) {
       continue
     }
 
-    const batchSize = Math.min(MAX_PER_RUN, remaining)
+    const batchSize = Math.min(perCampaignCap, remaining)
     // Claim the batch atomically (FOR UPDATE SKIP LOCKED) so a concurrent
     // drip run can never grab the same recipients and double-send. See
     // migration 041.
