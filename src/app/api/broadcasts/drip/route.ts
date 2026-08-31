@@ -43,6 +43,7 @@ interface ContactRow {
   id: string
   phone: string | null
   name: string | null
+  opted_out: boolean | null
 }
 
 // Shape returned by the claim_broadcast_recipients RPC (migration 041).
@@ -234,7 +235,7 @@ export async function GET(request: Request) {
 
     const { data: contacts } = await admin
       .from('contacts')
-      .select('id, phone, name')
+      .select('id, phone, name, opted_out')
       .in('id', (pending as ContactRef[]).map((p) => p.contact_id))
     const byId = new Map<string, ContactRow>(
       ((contacts ?? []) as ContactRow[]).map((ct) => [ct.id, ct]),
@@ -289,6 +290,19 @@ export async function GET(request: Request) {
       }
 
       const contact = byId.get(row.contact_id as string)
+
+      // Contact opted out (e.g. replied "SAIR") after this campaign's
+      // recipients were already snapshotted — audience filters at
+      // build-time can't catch that, so this is the last line of defense.
+      if (contact?.opted_out) {
+        await admin
+          .from('broadcast_recipients')
+          .update({ status: 'failed', error_message: 'opted_out' })
+          .eq('id', row.id)
+        failed++
+        continue
+      }
+
       const sanitized = contact?.phone ? sanitizePhoneForMeta(contact.phone) : ''
       if (!contact || !isValidE164(sanitized)) {
         await admin

@@ -454,7 +454,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'update_contact_field': {
       const cfg = step.step_config as UpdateContactFieldStepConfig
       if (!args.contactId) throw new Error('update_contact_field needs a contact')
-      const allowed = new Set(['name', 'email', 'company'])
+      const allowed = new Set(['name', 'email', 'company', 'opted_out'])
       if (!allowed.has(cfg.field)) {
         return `field ${cfg.field} not writable from automations`
       }
