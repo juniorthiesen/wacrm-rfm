@@ -6,4 +6,4 @@ compatibility_date = "2026-06-19"
 crons = ["*/5 * * * *"]
 
 [vars]
-APP_URL = "https://crm.auroralabs.com.br"
+APP_URL = "https://wacrm-rfm.vercel.app"

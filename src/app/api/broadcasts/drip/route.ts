@@ -22,12 +22,16 @@ import {
  * trailing 24h. Auth: 'Authorization: Bearer <CRON_SECRET>' (Vercel
  * Cron) or 'x-cron-secret'.
  */
-export const maxDuration = 60
+// Fluid compute is enabled on this project (confirmed 2026-08-31), which
+// raises the Hobby-plan max from 60s to 300s. Using 280s to leave headroom
+// instead of running right up against the hard cap.
+export const maxDuration = 280
 
-// Keep a run well under the 60s timeout: ~80 Meta calls at <=400ms each,
-// plus a one-off media-header upload per campaign. (Was 150, which could
-// tip past 60s when Meta latency rose, killing the function mid-batch.)
-const MAX_PER_RUN = 80
+// Keep a run comfortably under maxDuration: at ~750ms/Meta-call (observed),
+// 280s of sequential sends fits ~370; 300 leaves margin for per-campaign
+// overhead (contact/config fetch, media-header re-upload). Split across
+// active campaigns below so one large campaign can't starve the others.
+const MAX_PER_RUN = 300
 
 // Global per-contact frequency cap. When > 0, contacts who already received
 // any broadcast from this user in the last N days are skipped (status →
