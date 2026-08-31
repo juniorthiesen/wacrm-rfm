@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
   Check,
   GraduationCap,
   Loader2,
+  Search,
   Sparkles,
   X,
 } from 'lucide-react'
@@ -33,6 +34,15 @@ export default function LearningPage() {
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const [mining, setMining] = useState(false)
+  const [mineDone, setMineDone] = useState(false)
+  const [mineStats, setMineStats] = useState({
+    processed: 0,
+    queued: 0,
+    skippedDuplicate: 0,
+  })
+  const stopMiningRef = useRef(false)
 
   const load = async () => {
     setLoading(true)
@@ -124,6 +134,54 @@ export default function LearningPage() {
     }
   }
 
+  const startMining = async () => {
+    setMining(true)
+    setMineDone(false)
+    setError(null)
+    stopMiningRef.current = false
+    setMineStats({ processed: 0, queued: 0, skippedDuplicate: 0 })
+
+    let since: string | null = null
+    try {
+      while (!stopMiningRef.current) {
+        const resp: Response = await fetch('/api/ai/learning-queue/mine-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ since }),
+        })
+        const data: {
+          error?: string
+          processed: number
+          queued: number
+          skipped_duplicate: number
+          next_since: string | null
+        } = await resp.json()
+        if (!resp.ok) throw new Error(data.error ?? 'mine_failed')
+
+        setMineStats((prev) => ({
+          processed: prev.processed + data.processed,
+          queued: prev.queued + data.queued,
+          skippedDuplicate: prev.skippedDuplicate + data.skipped_duplicate,
+        }))
+
+        since = data.next_since
+        if (!since) {
+          setMineDone(true)
+          break
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'unknown_error')
+    } finally {
+      setMining(false)
+      load()
+    }
+  }
+
+  const stopMining = () => {
+    stopMiningRef.current = true
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -133,6 +191,36 @@ export default function LearningPage() {
         <p className="mt-1 text-sm text-slate-400">
           {t('aiAgent.learning.subtitle')}
         </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
+        <button
+          onClick={mining ? stopMining : startMining}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ${
+            mining
+              ? 'border border-slate-700 text-slate-300 hover:bg-slate-800'
+              : 'bg-primary text-primary-foreground hover:bg-primary/90'
+          }`}
+        >
+          {mining ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Search className="h-3.5 w-3.5" />
+          )}
+          {mining
+            ? t('aiAgent.learning.mineStop')
+            : t('aiAgent.learning.mineButton')}
+        </button>
+        {(mining || mineStats.processed > 0) && (
+          <span className="text-xs text-slate-400">
+            {mining && `${t('aiAgent.learning.mineRunning')} `}
+            {t('aiAgent.learning.mineProgress')
+              .replace('{processed}', String(mineStats.processed))
+              .replace('{queued}', String(mineStats.queued))
+              .replace('{duplicate}', String(mineStats.skippedDuplicate))}
+            {mineDone && ` · ${t('aiAgent.learning.mineDone')}`}
+          </span>
+        )}
       </div>
 
       {error && (

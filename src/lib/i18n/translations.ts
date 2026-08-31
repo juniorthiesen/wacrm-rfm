@@ -1261,7 +1261,12 @@ export const translations = {
         rejected: "Rejected",
         emptyTitle: "Nothing pending",
         emptySubtitle: "Click the graduation-cap icon on an operator reply in the inbox to extract a fact.",
-        errEmpty: "Title and content cannot be empty"
+        errEmpty: "Title and content cannot be empty",
+        mineButton: "Mine conversation history",
+        mineStop: "Stop",
+        mineRunning: "Mining…",
+        mineProgress: "{processed} pairs checked · {queued} queued · {duplicate} duplicates skipped",
+        mineDone: "Done — reached the end of history"
       },
       kb: {
         title: "Knowledge base",
@@ -2660,7 +2665,12 @@ export const translations = {
         rejected: "Rejeitado",
         emptyTitle: "Nada pendente",
         emptySubtitle: "Clique no ícone de boné de formatura em uma resposta sua no inbox para extrair um fato.",
-        errEmpty: "Título e conteúdo não podem ficar vazios"
+        errEmpty: "Título e conteúdo não podem ficar vazios",
+        mineButton: "Minerar histórico de conversas",
+        mineStop: "Parar",
+        mineRunning: "Minerando…",
+        mineProgress: "{processed} pares verificados · {queued} enfileirados · {duplicate} duplicatas puladas",
+        mineDone: "Concluído — chegou ao fim do histórico"
       },
       kb: {
         title: "Base de conhecimento",
