@@ -33,7 +33,12 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit'
 export const maxDuration = 280
 
 const BATCH_SIZE = 50
-const DUPLICATE_THRESHOLD = 0.9
+// 0.90 was too strict in practice — the extractor re-runs on the same
+// underlying pair produce slightly different wording each time (LLM,
+// not a copy of the input), so the exact same fact re-queued as a
+// "duplicate" scored well below 0.90. Lowered after confirming the
+// same 2 facts kept reappearing after approval (2026-09-01).
+const DUPLICATE_THRESHOLD = 0.82
 const RL_LIMIT = 20
 const RL_WINDOW_MS = 60_000
 
@@ -132,9 +137,12 @@ export async function POST(req: Request) {
 
     let embedding: number[]
     try {
+      // Same "title\n\ncontent" shape the approve route embeds
+      // (learning-queue/[id]/approve/route.ts) so the same underlying
+      // fact embeds near-identically whichever path produced it.
       const result = await generateEmbedding(
         db,
-        `${candidate.title}\n${candidate.content}`,
+        `${candidate.title}\n\n${candidate.content}`,
       )
       embedding = result.embedding
     } catch (e) {
@@ -146,11 +154,20 @@ export async function POST(req: Request) {
     }
 
     // Dedup against already-approved KB entries.
-    const { data: matches } = await db.rpc('match_ai_knowledge', {
-      query_embedding: toPgVector(embedding),
-      match_count: 1,
-      match_threshold: 0,
-    })
+    const { data: matches, error: matchError } = await db.rpc(
+      'match_ai_knowledge',
+      {
+        query_embedding: toPgVector(embedding),
+        match_count: 1,
+        match_threshold: 0,
+      },
+    )
+    if (matchError) {
+      // Don't silently let a broken dedup check through as "no
+      // duplicates" — surface it so a recurring failure is visible in
+      // logs instead of just re-queuing everything forever.
+      console.error('[mine-batch] dedup match failed:', matchError.message)
+    }
     const topMatch = ((matches ?? []) as { similarity: number }[])[0]
     if (topMatch && topMatch.similarity >= DUPLICATE_THRESHOLD) {
       skippedDuplicate++
