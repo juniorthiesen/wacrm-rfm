@@ -136,13 +136,18 @@ export async function createReverseLogistics(
     expirationDate.setDate(expirationDate.getDate() + days);
     const validUntilIso = expirationDate.toISOString().split("T")[0];
 
+    const dd = String(expirationDate.getDate()).padStart(2, "0");
+    const mm = String(expirationDate.getMonth() + 1).padStart(2, "0");
+    const yyyy = expirationDate.getFullYear();
+    const dataValidadeFormatada = `${dd}/${mm}/${yyyy}`;
+
     const payload = {
       codigoServico: params.serviceCode || "04669", // PAC Reverso
       numeroCartaoPostagem: config.cartaoPostagem,
       logisticaReversa: "S",
       pesoInformado: String(params.weightGrams || 300),
       prazoPostagem: days,
-      dataValidadeLogReversa: validUntilIso,
+      dataValidadeLogReversa: dataValidadeFormatada,
       pedidoExternoOrigem: String(params.orderNumber),
       remetente: {
         nome: params.client.nome.substring(0, 50),
