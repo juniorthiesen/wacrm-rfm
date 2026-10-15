@@ -1,0 +1,377 @@
+# Instincts generated from https://github.com/juniorthiesen/wacrm-rfm
+# Generated: 2026-06-20T16:16:12.869Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: wacrm-rfm-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: feat, fix
+
+## Evidence
+
+- 2 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat(dashboard): repurchase KPIs (repeat rate, ladder, windows), fix(theme): use useSyncExternalStore to drop setState-in-effect
+
+---
+id: wacrm-rfm-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Commit Length
+
+## Action
+
+Write moderate-length commit messages (~63 characters)
+
+## Evidence
+
+- Average commit message length: 63 chars
+- Based on 2 commits
+
+---
+id: wacrm-rfm-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: wacrm-rfm-import-alias
+trigger: "when importing modules"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Import Alias
+
+## Action
+
+Use path aliases (@/, ~/) instead of relative imports
+
+## Evidence
+
+- Import analysis shows alias pattern
+- Example: import { x } from '@/lib/x'
+
+---
+id: wacrm-rfm-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: wacrm-rfm-arch-type-based
+trigger: "when adding new code"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Arch Type Based
+
+## Action
+
+Place code in the appropriate type folder (components/, services/, utils/, etc.)
+
+## Evidence
+
+- Type-based module organization detected
+- Folders: app, components, hooks, lib
+
+---
+id: wacrm-rfm-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: wacrm-rfm-instinct-camelcase-files
+trigger: "When creating or renaming a file in the codebase"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Camelcase Files
+
+## Action
+
+Name the file using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.files: camelCase
+
+---
+id: wacrm-rfm-instinct-camelcase-functions
+trigger: "When defining a function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Camelcase Functions
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.functions: camelCase
+
+---
+id: wacrm-rfm-instinct-pascalcase-classes
+trigger: "When defining a class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Pascalcase Classes
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.classes: PascalCase
+
+---
+id: wacrm-rfm-instinct-screaming-constants
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Screaming Constants
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in namingConventions.constants: SCREAMING_SNAKE_CASE
+
+---
+id: wacrm-rfm-instinct-import-alias
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Import Alias
+
+## Action
+
+Use alias import style
+
+## Evidence
+
+- Pattern in importStyle: alias
+
+---
+id: wacrm-rfm-instinct-named-exports
+trigger: "When exporting modules or functions"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Named Exports
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: wacrm-rfm-instinct-typescript
+trigger: "When writing code"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Typescript
+
+## Action
+
+Use TypeScript as the programming language
+
+## Evidence
+
+- Pattern in language: TypeScript
+
+---
+id: wacrm-rfm-instinct-try-catch-errors
+trigger: "When handling errors in code"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Try Catch Errors
+
+## Action
+
+Use try-catch blocks for error handling
+
+## Evidence
+
+- Pattern in errorHandling.style: try-catch
+
+---
+id: wacrm-rfm-instinct-conventional-commits
+trigger: "When writing a commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Conventional Commits
+
+## Action
+
+Use the conventional commits format with a type prefix (e.g., feat, fix)
+
+## Evidence
+
+- Pattern in commits.type: conventional
+- Seen in commit: feat(dashboard): repurchase KPIs (repeat rate, ladder, windows)
+- Seen in commit: fix(theme): use useSyncExternalStore to drop setState-in-effect
+
+---
+id: wacrm-rfm-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Commit Length
+
+## Action
+
+Keep the commit message concise, around 63 characters on average
+
+## Evidence
+
+- Pattern in commits.averageLength: 63
+
+---
+id: wacrm-rfm-instinct-commit-prefixes
+trigger: "When choosing a commit type"
+confidence: 0.8
+domain: git
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Commit Prefixes
+
+## Action
+
+Use only 'feat' or 'fix' as commit prefixes
+
+## Evidence
+
+- Pattern in commits.prefixes: ['feat', 'fix']
+
+---
+id: wacrm-rfm-instinct-test-separate-location
+trigger: "When adding or organizing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: juniorthiesen/wacrm-rfm
+---
+
+# Wacrm Rfm Instinct Test Separate Location
+
+## Action
+
+Place test files in a separate location from source code
+
+## Evidence
+
+- Pattern in testLocation: separate
+
