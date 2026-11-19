@@ -639,6 +639,18 @@ export const translations = {
         follow_up_reminder: {
           name: "Follow-up Reminder",
           description: "Send a nudge if a contact has not replied within 24 hours."
+        },
+        reativacao_90_dias: {
+          name: "Win-back sequence (90+ days without buying)",
+          description: "Enrols lapsed customers once: e-mail, then a personal single-use coupon a week later, then a last reminder. Includes a control group so the real effect can be measured."
+        },
+        carrinho_abandonado_email: {
+          name: "Abandoned cart (e-mail, 3 reminders)",
+          description: "Wins back people who left items in the cart: a reminder about 1 h later, another at 24 h and a last one with a 5% coupon, always with the link that restores the cart. Stops when they buy."
+        },
+        link_magico_email: {
+          name: "Magic login link (e-mail)",
+          description: "E-mails the passwordless login link requested at checkout. Transactional. Before turning it on, make sure WordPress does not send the same e-mail."
         }
       },
       trigger: "Trigger",
@@ -682,6 +694,34 @@ export const translations = {
         noText: "no text yet",
         pickTemplate: "pick a template",
         noUrl: "no url",
+        noSubject: "no subject",
+        couponHelp: "Creates a single-use coupon in the connected store (WooCommerce), tied to the contact's e-mail, with an expiry date. The code is saved in {{vars.coupon_code}} for the next steps (e.g. the e-mail's coupon box).",
+        couponPrefixLabel: "Code prefix",
+        couponTypeLabel: "Discount type",
+        couponFixedOption: "Fixed amount (R$)",
+        couponPercentOption: "Percent (%)",
+        couponAmountLabel: "Amount",
+        couponMinLabel: "Minimum cart (R$)",
+        couponValidDaysLabel: "Valid for (days)",
+        purchasedSinceEnrollmentOption: "Bought since entering the sequence",
+        recencyHelp: "Customers are enrolled once, when they are between these two numbers of days without buying. The control group is enrolled and measured but never contacted.",
+        recencyMinLabel: "From (days without buying)",
+        recencyMaxLabel: "To (days)",
+        recencyCapLabel: "Max people per day",
+        recencyControlLabel: "Control group (%)",
+        emailHelp: "Sends an e-mail to the contact's address. Placeholders: {{customer.first_name|linda}} (the part after | is the fallback), {{vars.x}}, {{cart.x}}, {{order.x}}. Marketing e-mails always carry an unsubscribe link and respect the daily and per-contact frequency limits.",
+        emailSubjectLabel: "Subject",
+        emailHeadingLabel: "Heading",
+        emailBodyLabel: "Body (blank line = new paragraph)",
+        emailCtaLabelLabel: "Button text",
+        emailCtaUrlLabel: "Button URL",
+        emailBenefitLabel: "Note under the button",
+        emailCouponCodeLabel: "Coupon code (e.g. {{vars.coupon_code}})",
+        emailCouponHeadlineLabel: "Coupon headline",
+        emailCategoryLabel: "Type",
+        emailCategoryMarketing: "Marketing (unsubscribe link + limits)",
+        emailCategoryTransactional: "Transactional (order/account notice)",
+        emailCampaignKeyLabel: "Campaign tag (for reports)",
         whenSubject: "when {subject}",
         deleteButton: "Delete",
         yesLabel: "Yes",
@@ -756,7 +796,8 @@ export const translations = {
         order_failed: "Order Failed",
         customer_magic_login_requested: "Magic Login Requested",
         cart_abandoned: "Cart Abandoned",
-        birthday_month: "Birthday Month"
+        birthday_month: "Birthday Month",
+        recency_reached: "Days since last purchase"
       },
       triggerHints: {
         new_message_received: "Any incoming message",
@@ -777,7 +818,8 @@ export const translations = {
         order_failed: "Payment failed for the order",
         customer_magic_login_requested: "Customer requested a quick-access / magic-login link (SmartCheckout / Loja5). Use {{magic_login.suffix}} for the dynamic URL button.",
         cart_abandoned: "Customer abandoned the cart at checkout (Funnelkit / BuildwooFunnels). Use {{cart.checkout_url_suffix}} for the dynamic URL button to bring them back to the cart.",
-        birthday_month: "First day of the contact's birth month (checked daily). Fires once per year so you can send a month-long coupon ahead of the actual birthday greeting."
+        birthday_month: "First day of the contact's birth month (checked daily). Fires once per year so you can send a month-long coupon ahead of the actual birthday greeting.",
+        recency_reached: "Enrols customers once they pass N days without buying (checked daily, with a daily cap and a control group). Use it to build a win-back sequence."
       },
       stepMeta: {
         send_message: "Send Message",
@@ -790,6 +832,8 @@ export const translations = {
         wait: "Wait",
         condition: "Condition (If/Else)",
         send_webhook: "Send Webhook",
+        send_email: "Send E-mail",
+        create_coupon: "Create Coupon",
         close_conversation: "Close Conversation"
       }
     },
@@ -2043,6 +2087,18 @@ export const translations = {
         follow_up_reminder: {
           name: "Lembrete de Acompanhamento",
           description: "Envie um lembrete se o contato não responder dentro de 24 horas."
+        },
+        reativacao_90_dias: {
+          name: "Régua de reativação (90+ dias sem comprar)",
+          description: "Inscreve clientes parados uma única vez: e-mail, depois um cupom pessoal de uso único uma semana depois e um último lembrete. Inclui grupo de controle para medir o efeito real."
+        },
+        carrinho_abandonado_email: {
+          name: "Carrinho abandonado (e-mail, 3 lembretes)",
+          description: "Recupera quem deixou o carrinho: lembrete cerca de 1 h depois, outro com 24 h e um último com cupom de 5%, sempre com o link que restaura o carrinho. Para quando a pessoa compra."
+        },
+        link_magico_email: {
+          name: "Link mágico de acesso (e-mail)",
+          description: "Envia por e-mail o link de acesso sem senha pedido no checkout. Transacional. Antes de ativar, confirme que o WordPress não envia o mesmo e-mail."
         }
       },
       trigger: "Gatilho",
@@ -2086,6 +2142,34 @@ export const translations = {
         noText: "sem texto ainda",
         pickTemplate: "escolha um modelo",
         noUrl: "sem URL",
+        noSubject: "sem assunto",
+        couponHelp: "Cria um cupom de uso único na loja conectada (WooCommerce), preso ao e-mail do contato e com data de validade. O código fica em {{vars.coupon_code}} para os próximos passos (ex.: a caixa de cupom do e-mail).",
+        couponPrefixLabel: "Prefixo do código",
+        couponTypeLabel: "Tipo de desconto",
+        couponFixedOption: "Valor fixo (R$)",
+        couponPercentOption: "Percentual (%)",
+        couponAmountLabel: "Valor",
+        couponMinLabel: "Carrinho mínimo (R$)",
+        couponValidDaysLabel: "Validade (dias)",
+        purchasedSinceEnrollmentOption: "Comprou desde que entrou na sequência",
+        recencyHelp: "O cliente é inscrito uma vez, quando estiver entre estes dois números de dias sem comprar. O grupo de controle é inscrito e medido, mas nunca contatado.",
+        recencyMinLabel: "De (dias sem comprar)",
+        recencyMaxLabel: "Até (dias)",
+        recencyCapLabel: "Máx. de pessoas por dia",
+        recencyControlLabel: "Grupo de controle (%)",
+        emailHelp: "Envia um e-mail para o endereço do contato. Variáveis: {{customer.first_name|linda}} (o que vem depois do | é o texto reserva), {{vars.x}}, {{cart.x}}, {{order.x}}. E-mails de marketing sempre levam o link de descadastro e respeitam os limites diário e por contato.",
+        emailSubjectLabel: "Assunto",
+        emailHeadingLabel: "Título",
+        emailBodyLabel: "Texto (linha em branco = novo parágrafo)",
+        emailCtaLabelLabel: "Texto do botão",
+        emailCtaUrlLabel: "Link do botão",
+        emailBenefitLabel: "Nota abaixo do botão",
+        emailCouponCodeLabel: "Código do cupom (ex.: {{vars.coupon_code}})",
+        emailCouponHeadlineLabel: "Título do cupom",
+        emailCategoryLabel: "Tipo",
+        emailCategoryMarketing: "Marketing (link de descadastro + limites)",
+        emailCategoryTransactional: "Transacional (aviso de pedido/conta)",
+        emailCampaignKeyLabel: "Etiqueta da campanha (para relatórios)",
         whenSubject: "quando {subject}",
         deleteButton: "Excluir",
         yesLabel: "Sim",
@@ -2160,7 +2244,8 @@ export const translations = {
         order_failed: "Pedido Falhou",
         customer_magic_login_requested: "Magic Login Solicitado",
         cart_abandoned: "Carrinho Abandonado",
-        birthday_month: "Mês de Aniversário"
+        birthday_month: "Mês de Aniversário",
+        recency_reached: "Dias sem comprar"
       },
       triggerHints: {
         new_message_received: "Qualquer mensagem recebida",
@@ -2181,7 +2266,8 @@ export const translations = {
         order_failed: "Pagamento falhou no pedido",
         customer_magic_login_requested: "Cliente pediu link de acesso rápido (SmartCheckout / Loja5). Use {{magic_login.suffix}} no botão dinâmico do modelo.",
         cart_abandoned: "Cliente abandonou o checkout (Funnelkit / BuildwooFunnels). Use {{cart.checkout_url_suffix}} no botão dinâmico pra trazer ele de volta ao carrinho.",
-        birthday_month: "Primeiro dia do mês de aniversário do contato (verificado diariamente). Dispara 1x por ano — útil pra enviar cupom de aniversário válido pelo mês todo, antes do parabéns no dia."
+        birthday_month: "Primeiro dia do mês de aniversário do contato (verificado diariamente). Dispara 1x por ano — útil pra enviar cupom de aniversário válido pelo mês todo, antes do parabéns no dia.",
+        recency_reached: "Inscreve clientes quando passam N dias sem comprar (verificado diariamente, com teto por dia e grupo de controle). Use para montar uma sequência de reativação."
       },
       stepMeta: {
         send_message: "Enviar Mensagem",
@@ -2194,6 +2280,8 @@ export const translations = {
         wait: "Aguardar",
         condition: "Condição (Se/Senão)",
         send_webhook: "Disparar Webhook",
+        send_email: "Enviar E-mail",
+        create_coupon: "Criar Cupom",
         close_conversation: "Fechar Conversa"
       }
     },

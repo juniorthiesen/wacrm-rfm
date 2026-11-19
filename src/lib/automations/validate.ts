@@ -1,4 +1,5 @@
 import type { AutomationTriggerType } from '@/types'
+import { parseRecencyConfig } from './regua'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -111,10 +112,36 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       if (!nonEmpty(c.subject)) {
         issues.push({ path: `${path}.subject`, message: 'condition subject is required' })
       }
-      if (!nonEmpty(c.operand)) {
+      // purchased_since_enrollment reads vars.enrolled_at: it has no operand.
+      if (c.subject !== 'purchased_since_enrollment' && !nonEmpty(c.operand)) {
         issues.push({ path: `${path}.operand`, message: 'condition operand is required' })
       }
       break
+    case 'create_coupon': {
+      const amount = Number(c.amount)
+      if (!Number.isFinite(amount) || amount <= 0) {
+        issues.push({ path: `${path}.amount`, message: 'coupon amount must be greater than zero' })
+      } else if (c.discount_type === 'percent' && amount > 100) {
+        issues.push({ path: `${path}.amount`, message: 'percent coupons cannot exceed 100' })
+      }
+      if (c.discount_type !== 'fixed_cart' && c.discount_type !== 'percent') {
+        issues.push({
+          path: `${path}.discount_type`,
+          message: 'coupon type must be fixed_cart or percent',
+        })
+      }
+      const days = Number(c.valid_days)
+      if (!Number.isInteger(days) || days < 1 || days > 90) {
+        issues.push({
+          path: `${path}.valid_days`,
+          message: 'coupon validity must be between 1 and 90 days',
+        })
+      }
+      if (c.minimum_amount !== undefined && c.minimum_amount !== '' && !(Number(c.minimum_amount) >= 0)) {
+        issues.push({ path: `${path}.minimum_amount`, message: 'minimum cart value cannot be negative' })
+      }
+      break
+    }
     case 'send_webhook':
       if (!nonEmpty(c.url)) {
         issues.push({ path: `${path}.url`, message: 'webhook URL is required' })
@@ -132,6 +159,41 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({ path: `${path}.url`, message: 'webhook URL is not a valid URL' })
       }
       break
+    case 'send_email': {
+      if (!nonEmpty(c.subject)) {
+        issues.push({ path: `${path}.subject`, message: 'e-mail subject is required' })
+      }
+      if (!nonEmpty(c.heading)) {
+        issues.push({ path: `${path}.heading`, message: 'e-mail heading is required' })
+      }
+      if (!nonEmpty(c.body)) {
+        issues.push({ path: `${path}.body`, message: 'e-mail body is required' })
+      }
+      const hasLabel = nonEmpty(c.cta_label)
+      const hasUrl = nonEmpty(c.cta_url)
+      if (hasLabel !== hasUrl) {
+        issues.push({
+          path: `${path}.cta_url`,
+          message: 'button text and URL must be filled together',
+        })
+      } else if (hasUrl && !/^(https?:\/\/|\{\{)/i.test(String(c.cta_url).trim())) {
+        issues.push({
+          path: `${path}.cta_url`,
+          message: 'button URL must start with http(s):// or a {{variable}}',
+        })
+      }
+      if (
+        c.category !== undefined &&
+        c.category !== 'marketing' &&
+        c.category !== 'transactional'
+      ) {
+        issues.push({
+          path: `${path}.category`,
+          message: 'e-mail type must be marketing or transactional',
+        })
+      }
+      break
+    }
     case 'close_conversation':
       // No config required.
       break
@@ -167,6 +229,11 @@ export function validateTriggerForActivation(
   } else if (triggerType === 'tag_added') {
     if (!nonEmpty(cfg.tag_id)) {
       issues.push({ path: 'trigger.tag_id', message: 'tag is required' })
+    }
+  } else if (triggerType === 'recency_reached') {
+    const parsed = parseRecencyConfig(cfg)
+    if (!parsed.ok) {
+      for (const message of parsed.errors) issues.push({ path: 'trigger', message })
     }
   }
 

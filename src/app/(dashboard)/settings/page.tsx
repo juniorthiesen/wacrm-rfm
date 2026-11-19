@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Settings, MessageSquare, Tag, User, Palette, BarChart2, ShoppingCart, Sparkles } from 'lucide-react';
+import { Settings, MessageSquare, Tag, User, Palette, BarChart2, ShoppingCart, Sparkles, Mail } from 'lucide-react';
 import { useTranslation } from '@/hooks/use-translation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { WhatsAppConfig } from '@/components/settings/whatsapp-config';
@@ -14,6 +14,7 @@ import { AppearancePanel } from '@/components/settings/appearance-panel';
 import { MetaAdsPanel } from '@/components/settings/meta-ads-panel';
 import { WooCommercePanel } from '@/components/settings/woocommerce-panel';
 import { AiAgentPanel } from '@/components/settings/ai-agent-panel';
+import { EmailPanel } from '@/components/settings/email-panel';
 
 const TAB_VALUES = [
   'profile',
@@ -24,6 +25,7 @@ const TAB_VALUES = [
   'meta-ads',
   'woocommerce',
   'ai-agent',
+  'email',
 ] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
@@ -116,6 +118,13 @@ export default function SettingsPage() {
             <Sparkles className="size-4" />
             {t("settings.tabs.aiAgent")}
           </TabsTrigger>
+          <TabsTrigger
+            value="email"
+            className="data-active:bg-slate-800 data-active:text-primary text-slate-400"
+          >
+            <Mail className="size-4" />
+            E-mail
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="space-y-6">
@@ -150,6 +159,10 @@ export default function SettingsPage() {
 
         <TabsContent value="ai-agent">
           <AiAgentPanel />
+        </TabsContent>
+
+        <TabsContent value="email">
+          <EmailPanel />
         </TabsContent>
       </Tabs>
     </div>
