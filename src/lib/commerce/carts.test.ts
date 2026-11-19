@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCartItemsList, formatBRL, parseCartPayload, urlSuffix } from "./carts";
+import { buildCartItemsList, formatBRL, parseCartPayload, parsePluginTime, urlSuffix } from "./carts";
 
 const cart = (over: Record<string, unknown> = {}) => ({
   id: 41,
@@ -91,6 +91,21 @@ describe("parseCartPayload", () => {
     const { carts, rejected } = parseCartPayload(many);
     expect(carts).toHaveLength(200);
     expect(rejected).toBe(50);
+  });
+});
+
+describe("parsePluginTime", () => {
+  it("reads the plugin's MySQL datetime as UTC and rejects junk", () => {
+    expect(parsePluginTime("2026-11-19 14:03:07")).toBe("2026-11-19T14:03:07.000Z");
+    expect(parsePluginTime("2026-11-19T14:03:07Z")).toBe("2026-11-19T14:03:07.000Z");
+    expect(parsePluginTime("")).toBeNull();
+    expect(parsePluginTime("ontem")).toBeNull();
+    expect(parsePluginTime(undefined)).toBeNull();
+  });
+
+  it("is carried into the normalized cart", () => {
+    expect(parseCartPayload([cart({ time: "2026-11-19 14:03:07" })]).carts[0].createdAt).toBe("2026-11-19T14:03:07.000Z");
+    expect(parseCartPayload([cart()]).carts[0].createdAt).toBeNull();
   });
 });
 

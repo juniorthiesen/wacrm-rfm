@@ -41,6 +41,8 @@ export interface NormalizedCart {
   total: number;
   currency: string;
   reachedCheckout: boolean;
+  /** When the plugin created the cart (ISO, UTC). null when the plugin sent no usable `time`. */
+  createdAt: string | null;
 }
 
 export interface ParsedCarts {
@@ -72,6 +74,19 @@ function httpUrl(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The plugin sends `time` as a MySQL datetime in UTC ("2026-11-19 14:03:07",
+ * WordPress stores `current_time('mysql', true)`). Returns an ISO string, or
+ * null for anything that is not a plausible past/present date.
+ */
+export function parsePluginTime(value: unknown): string | null {
+  const raw = str(value, 40);
+  if (!raw) return null;
+  const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw) ? `${raw.replace(" ", "T")}Z` : raw;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 function hostOf(url: string): string {
@@ -157,6 +172,7 @@ export function parseCartPayload(body: unknown, allowedHost?: string | null): Pa
       total: num(raw.cart_total),
       currency: str(raw.currency, 3).toUpperCase() || "BRL",
       reachedCheckout: raw.reached_checkout === true || raw.reached_checkout === 1 || raw.reached_checkout === "1",
+      createdAt: parsePluginTime(raw.time),
     });
   }
 

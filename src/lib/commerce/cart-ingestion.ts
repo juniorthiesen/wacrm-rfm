@@ -19,6 +19,9 @@ import { buildCartItemsList, formatBRL, urlSuffix, type NormalizedCart } from ".
 /** The cart sequence lasts about 3 days (1 h, 24 h, 72 h): protect a bit more. */
 export const SEQUENCE_PROTECTION_DAYS = 4;
 
+/** A cart created more than this long ago never starts a sequence (see the backlog guard below). */
+export const MAX_CART_AGE_HOURS = 12;
+
 export interface StoredCart {
   status: string;
   sequence_started_at: string | null;
@@ -111,6 +114,16 @@ export async function processCartEvents(
       if (existing?.sequence_started_at) {
         await deps.store.saveCart(userId, cart, {}, nowIso);
         skip("already_started");
+        continue;
+      }
+
+      // Backlog guard: the plugin reports a cart ~25 min after the last activity, so
+      // one created long ago is a stale/backfilled delivery (e.g. the first sync after
+      // the webhook is switched on). Recording it is enough; messaging someone about a
+      // cart from days ago would be noise (and a WhatsApp template costs money).
+      if (cart.createdAt && now.getTime() - new Date(cart.createdAt).getTime() > MAX_CART_AGE_HOURS * 60 * 60 * 1000) {
+        await deps.store.saveCart(userId, cart, { skipReason: "stale" }, nowIso);
+        skip("stale");
         continue;
       }
 
