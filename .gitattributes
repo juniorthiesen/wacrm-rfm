@@ -1,0 +1,4 @@
+# Scripts copiados para servidores Linux precisam ficar com final de linha LF,
+# mesmo em um checkout no Windows (CRLF quebra o shebang do bash).
+*.sh text eol=lf
+scripts/deploy/vps-cron/*.cron text eol=lf
