@@ -5,6 +5,7 @@ import { recalculateUserRFM } from "@/lib/rfm/engine";
 import { runAutomationsForTrigger } from "@/lib/automations/engine";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { findContactByPhoneOrEmail, ingestOrder } from "@/lib/commerce/order-ingestion";
+import { ingestCartWebhook, isCartPayload } from "@/lib/commerce/cart-webhook";
 import { extractBirthdayRaw } from "@/lib/commerce/birthday";
 import { normalizePhone } from "@/lib/integrations/phone-normalization";
 import type { AutomationTriggerType } from "@/types";
@@ -598,6 +599,13 @@ export async function POST(request: Request) {
     // their own payload — currently `{ url, user }`. Routing by shape
     // lets the operator use ONE delivery URL for every WC-side hook
     // instead of one per event type.
+    // The checkout plugin's abandoned-cart webhook posts a JSON ARRAY of carts to
+    // whatever URL the operator pastes; accept it here so the generic Woo URL works.
+    if (isCartPayload(payload)) {
+      const r = await ingestCartWebhook(db, userId, config.store_url, payload);
+      return NextResponse.json(r.body, { status: r.status });
+    }
+
     if (
       typeof payload.url === "string" &&
       payload.user &&

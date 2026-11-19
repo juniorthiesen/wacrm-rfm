@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
-import { runAutomationsForTrigger } from "@/lib/automations/engine";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
-import { parseCartPayload } from "@/lib/commerce/carts";
-import { processCartEvents, supabaseCartStore } from "@/lib/commerce/cart-ingestion";
+import { ingestCartWebhook } from "@/lib/commerce/cart-webhook";
 
 /**
  * Abandoned-cart webhook of the WooCommerce checkout plugin (WC Smart Checkout,
@@ -74,22 +72,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
-    // Recovery links must point at the configured store, never anywhere else.
-    const { carts, rejected } = parseCartPayload(body, config.store_url);
-
-    const summary = await processCartEvents(
-      {
-        store: supabaseCartStore(db),
-        dispatch: ({ userId: uid, contactId, context }) =>
-          runAutomationsForTrigger({ userId: uid, triggerType: "cart_abandoned", contactId, context }),
-      },
-      userId,
-      carts,
-    );
-
-    const payload = { success: summary.failed === 0, received: carts.length, rejected, ...summary };
-    // Non-2xx makes the plugin resend the whole batch; safe because processing is idempotent.
-    return NextResponse.json(payload, { status: summary.failed === 0 ? 200 : 500 });
+    const result = await ingestCartWebhook(db, userId, config.store_url, body);
+    return NextResponse.json(result.body, { status: result.status });
   } catch (error) {
     console.error("[woocommerce-carts] error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
