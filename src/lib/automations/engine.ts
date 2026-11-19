@@ -8,6 +8,8 @@ import type {
   SendMessageStepConfig,
   SendTemplateStepConfig,
   SendWebhookStepConfig,
+  SendEmailStepConfig,
+  CreateCouponStepConfig,
   TagStepConfig,
   UpdateContactFieldStepConfig,
   WaitStepConfig,
@@ -16,6 +18,11 @@ import type {
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
 import { engineSendText, engineSendTemplate } from './meta-send'
+import { loadStoreConnector } from '@/lib/commerce/connector'
+import { sendEmail } from '@/lib/email/send'
+import { buildStepEmail } from '@/lib/email/step'
+import { supabaseEmailStore } from '@/lib/email/store'
+import { RetryStep, planRetry } from './retry'
 
 // ------------------------------------------------------------
 // Public API
@@ -129,6 +136,25 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
 }
 
 /**
+ * Run ONE specific automation for ONE contact, bypassing trigger matching.
+ * Used by crons that decide enrolment themselves (recency régua), where the
+ * "trigger" is a scheduled selection rather than an inbound event.
+ * Throws on failure so the caller can count it.
+ */
+export async function runAutomationForContact(
+  automation: Automation,
+  contactId: string,
+  context: AutomationContext = {},
+): Promise<void> {
+  await executeAutomation(automation, {
+    userId: automation.user_id,
+    triggerType: automation.trigger_type,
+    contactId,
+    context,
+  })
+}
+
+/**
  * Resume a run that was parked at a wait step. Called from the cron
  * endpoint after it grabs a due `automation_pending_executions` row.
  */
@@ -157,7 +183,7 @@ export async function resumePendingExecution(pending: {
   }
 
   try {
-    await executeStepsFrom({
+    const parked = await executeStepsFrom({
       automation: automation as Automation,
       contactId: pending.contact_id,
       context: pending.context ?? {},
@@ -168,6 +194,9 @@ export async function resumePendingExecution(pending: {
       triggerEvent: 'resumed_wait',
     })
     await markPending(pending.id, 'done')
+    // A resumed NESTED scope never sets the run's final status (only the root
+    // scope does), so settle it here once nothing else of this run is parked.
+    if (!parked && pending.parent_step_id !== null) await settleRunStatus(pending.log_id)
   } catch (err) {
     console.error('[automations] resume failed:', err)
     await markPending(pending.id, 'failed')
@@ -233,7 +262,12 @@ interface ExecuteArgs {
   triggerEvent: string
 }
 
-async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
+/**
+ * Runs the steps of one scope (root or a condition branch) from `startPosition`.
+ * Resolves to `true` when something in it was PARKED to run later (a Wait step or
+ * a retry), so the caller keeps the run "in progress" instead of "success".
+ */
+async function executeStepsFrom(args: ExecuteArgs): Promise<boolean> {
   const db = supabaseAdmin()
 
   const baseQuery = db
@@ -252,18 +286,19 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
 
   if (stepsErr) {
     await finalizeLog(args.logId, 'failed', stepsErr.message)
-    return
+    return false
   }
   if (!steps || steps.length === 0) {
     if (args.parentStepId === null && args.logId) {
       await finalizeLog(args.logId, 'success', null)
     }
-    return
+    return false
   }
 
   const results: AutomationLogStepResult[] = []
   let status: 'success' | 'partial' | 'failed' = 'success'
   let errorMessage: string | null = null
+  let parked = false
 
   for (const step of steps as AutomationStep[]) {
     // `wait` is the suspension point: enqueue and stop processing this
@@ -291,7 +326,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
       })
       status = 'partial'
       await appendResults(args.logId, results, status, errorMessage)
-      return
+      return true
     }
 
     try {
@@ -306,13 +341,14 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
         })
         // Recurse into the chosen branch at position 0 (children use their
         // own ordering within the branch scope).
-        await executeStepsFrom({
+        const branchParked = await executeStepsFrom({
           ...args,
           parentStepId: step.id,
           branch: taken ? 'yes' : 'no',
           startPosition: 0,
           logId: args.logId,
         })
+        if (branchParked) parked = true
         continue
       }
 
@@ -324,7 +360,44 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
         detail,
       })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      let failure: unknown = err
+
+      // A step can say "this failure is transient, repeat THIS step later".
+      // Park the run the way a Wait step does, but pointing at the same step,
+      // with the context saved (so e.g. an already-created coupon is not
+      // created again). The cron that resumes waits picks it up.
+      if (err instanceof RetryStep) {
+        const counter = `_retry_${step.id}`
+        const attempt = Number(args.context.vars?.[counter] ?? 0) + 1
+        const decision = planRetry(err.kind, attempt, new Date())
+        if (decision.retry) {
+          args.context.vars = { ...(args.context.vars ?? {}), [counter]: attempt }
+          await db.from('automation_pending_executions').insert({
+            automation_id: args.automation.id,
+            user_id: args.automation.user_id,
+            contact_id: args.contactId,
+            log_id: args.logId,
+            parent_step_id: args.parentStepId,
+            branch: args.branch,
+            next_step_position: step.position,
+            context: args.context,
+            run_at: decision.at.toISOString(),
+            status: 'pending',
+          })
+          results.push({
+            step_id: step.id,
+            step_type: step.step_type,
+            status: 'retrying',
+            detail: `${err.message} — nova tentativa ${decision.attempt}/${decision.max} em ${decision.at.toISOString()}`,
+          })
+          status = 'partial'
+          await appendResults(args.logId, results, status, errorMessage)
+          return true
+        }
+        failure = new Error(`${err.message} (esgotou as ${decision.max} novas tentativas)`)
+      }
+
+      const msg = failure instanceof Error ? failure.message : String(failure)
       results.push({
         step_id: step.id,
         step_type: step.step_type,
@@ -337,12 +410,17 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
     }
   }
 
+  // Something in a nested branch is parked (Wait / retry): the whole run is
+  // still in progress, it must not be reported as finished.
+  if (parked && status === 'success') status = 'partial'
+
   if (args.parentStepId === null) {
     await appendResults(args.logId, results, status, errorMessage)
   } else {
     // Nested branch — just append results; parent scope decides final status.
     await appendResults(args.logId, results, null, errorMessage)
   }
+  return parked
 }
 
 async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string> {
@@ -493,6 +571,153 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       return `webhook ${res.status}`
     }
 
+    case 'send_email': {
+      const cfg = step.step_config as SendEmailStepConfig
+      if (!args.contactId) throw new Error('send_email needs a contact')
+
+      const { data: contact, error: contactErr } = await db
+        .from('contacts')
+        .select('id, name, email')
+        .eq('id', args.contactId)
+        .eq('user_id', args.automation.user_id)
+        .maybeSingle()
+      if (contactErr || !contact) throw new Error('contact not found for this user')
+
+      const address = String(contact.email ?? '').trim()
+      // A missing e-mail is a data condition, not an error: skip this step and
+      // let the rest of the flow (e.g. a WhatsApp step) continue.
+      if (!address) return 'skipped: contact has no e-mail'
+
+      const fullName = String(contact.name ?? '').trim()
+      const emailArgs: ExecuteArgs = {
+        ...args,
+        context: {
+          ...args.context,
+          // Time-based triggers carry no webhook payload, so derive the usual
+          // {{customer.*}} values from the contact; a webhook payload still wins.
+          customer: {
+            first_name: fullName.split(/\s+/)[0] ?? '',
+            name: fullName,
+            email: address,
+            ...args.context.customer,
+          },
+        },
+      }
+      const fill = (s: string) => interpolate(s, emailArgs)
+
+      // Validate and resolve the subject up-front; brand and the unsubscribe
+      // link are supplied by sendEmail when it renders.
+      const probe = buildStepEmail(cfg, fill, { brand: {}, unsubscribeUrl: null })
+      if ('error' in probe) throw new Error(`send_email: ${probe.error}`)
+
+      const result = await sendEmail(
+        {
+          userId: args.automation.user_id,
+          to: address,
+          subject: probe.subject,
+          category: cfg.category === 'transactional' ? 'transactional' : 'marketing',
+          contactId: args.contactId,
+          automationId: args.automation.id,
+          campaignKey: cfg.campaign_key || null,
+          ignoreMinGap: cfg.respect_min_gap === false,
+          render: ({ unsubscribeUrl, brand }) => {
+            const built = buildStepEmail(cfg, fill, { brand, unsubscribeUrl })
+            if ('error' in built) throw new Error(built.error)
+            return built.rendered
+          },
+        },
+        { store: supabaseEmailStore(db) },
+      )
+
+      switch (result.status) {
+        case 'sent':
+          return `email sent (${result.providerMessageId})`
+        case 'suppressed':
+          return `skipped: address suppressed (${result.reason})`
+        case 'skipped':
+          // Daily limit / minimum gap between marketing e-mails: not a failure
+          // and not final. Without a retry the e-mail would just be lost.
+          throw new RetryStep(`e-mail adiado (${result.reason})`, 'limit')
+        case 'not_configured':
+          // Someone may fix the configuration within the retry window.
+          throw new RetryStep('send_email: e-mail channel is not configured or not active', 'error')
+        default:
+          // Rate limit / provider 5xx: the e-mail was NOT sent, safe to try again.
+          if (result.retryable && !result.ambiguous) {
+            throw new RetryStep(`send_email: ${result.error}`, 'error')
+          }
+          // Timeout / no answer: the provider may have sent it, so do NOT repeat
+          // automatically (a duplicate e-mail is worse than a late look at the log).
+          if (result.ambiguous) {
+            throw new Error(`send_email: sem confirmação do provedor, pode ter sido enviado (${result.error})`)
+          }
+          throw new Error(`send_email failed: ${result.error}`)
+      }
+    }
+
+    case 'create_coupon': {
+      const cfg = step.step_config as CreateCouponStepConfig
+      if (!args.contactId) throw new Error('create_coupon needs a contact')
+      const varName = (cfg.var_name ?? '').trim() || 'coupon_code'
+
+      // Idempotent within a run: never mint a second coupon for the same person.
+      const already = args.context.vars?.[varName]
+      if (typeof already === 'string' && already) return `coupon already issued (${already})`
+
+      const { data: contact } = await db
+        .from('contacts')
+        .select('id, email')
+        .eq('id', args.contactId)
+        .eq('user_id', args.automation.user_id)
+        .maybeSingle()
+      const email = String(contact?.email ?? '').trim().toLowerCase()
+      if (!email) return 'skipped: contact has no e-mail'
+
+      // Store down, keys without write access, integration switched off: all may
+      // be fixed in the next hours, so retry instead of stranding the person.
+      let connector: Awaited<ReturnType<typeof loadStoreConnector>>
+      try {
+        connector = await loadStoreConnector(db, args.automation.user_id)
+      } catch (err) {
+        throw new RetryStep(`create_coupon: ${err instanceof Error ? err.message : String(err)}`, 'error')
+      }
+      if (!connector) {
+        throw new RetryStep(
+          'create_coupon: no active store integration (WooCommerce keys need read/write access)',
+          'error',
+        )
+      }
+
+      let created: Awaited<ReturnType<typeof connector.createCoupon>>
+      try {
+        created = await connector.createCoupon({
+          codePrefix: cfg.code_prefix || 'CUPOM',
+          discountType: cfg.discount_type === 'percent' ? 'percent' : 'fixed_cart',
+          amount: Number(cfg.amount),
+          minimumAmount: cfg.minimum_amount ? Number(cfg.minimum_amount) : undefined,
+          validDays: Number(cfg.valid_days) || 10,
+          email,
+          description: `WaCRM: ${args.automation.name}`,
+        })
+      } catch (err) {
+        throw new RetryStep(`create_coupon: ${err instanceof Error ? err.message : String(err)}`, 'error')
+      }
+
+      // Later steps read it as {{vars.coupon_code}}; waits persist the context.
+      args.context.vars = {
+        ...(args.context.vars ?? {}),
+        [varName]: created.code,
+        [`${varName}_expires`]: created.expiresAt,
+      }
+      // Remember it on the enrolment so the report can tie redemptions to the régua.
+      await db
+        .from('automation_enrollments')
+        .update({ coupon_code: created.code, coupon_created_at: new Date().toISOString() })
+        .eq('automation_id', args.automation.id)
+        .eq('email', email)
+      return `coupon ${created.code} created (${connector.platform})`
+    }
+
     case 'close_conversation': {
       if (!args.contactId) throw new Error('close_conversation needs a contact')
       await db
@@ -551,6 +776,17 @@ function triggerMatches(automation: Automation, ctx: AutomationContext | undefin
   })
 }
 
+const PAID_ORDER_STATUSES = [
+  'processing',
+  'completed',
+  'enviado',
+  'separacao',
+  'wc-processing',
+  'wc-completed',
+  'wc-enviado',
+  'wc-separacao',
+]
+
 async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): Promise<boolean> {
   const db = supabaseAdmin()
   switch (cfg.subject) {
@@ -577,6 +813,21 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const text = (args.context.message_text ?? '').toString()
       return text.toLowerCase().includes((cfg.value ?? '').toLowerCase())
     }
+    case 'purchased_since_enrollment': {
+      // True once the contact has a PAID order after they entered the régua
+      // (vars.enrolled_at is set by the recency cron). Orders may carry the
+      // WooCommerce "wc-" prefix, same status set as the RFM (migration 030).
+      const since = String(args.context.vars?.enrolled_at ?? '')
+      if (!args.contactId || !since) return false
+      const { count } = await db
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', args.automation.user_id)
+        .eq('contact_id', args.contactId)
+        .gt('ordered_at', since)
+        .in('status', PAID_ORDER_STATUSES)
+      return (count ?? 0) > 0
+    }
     case 'time_of_day': {
       // operand form "HH:mm-HH:mm" — true if now is within that window
       // (supports over-midnight ranges like "18:00-09:00").
@@ -602,32 +853,42 @@ function waitMs(cfg: WaitStepConfig): number {
   return Math.max(1_000, cfg.amount * unitMs)
 }
 
+/**
+ * Replaces `{{ns.prop}}` placeholders. A fallback can follow a pipe:
+ * `{{customer.first_name|linda}}` renders "linda" when the value is empty.
+ * Templates without a pipe behave exactly as before.
+ */
 function interpolate(s: string, args: ExecuteArgs): string {
-  return s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
-    const [ns, prop] = String(key).split('.')
-    if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
-    if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
-    // {{order.X}} and {{customer.X}} are populated by webhook integrations
-    // such as WooCommerce. Missing values render as empty string, matching
-    // the rest of this function's contract — never inject 'undefined'.
-    if (ns === 'order' && prop) {
-      const v = args.context.order?.[prop]
-      return v == null ? '' : String(v)
-    }
-    if (ns === 'customer' && prop) {
-      const v = args.context.customer?.[prop]
-      return v == null ? '' : String(v)
-    }
-    if (ns === 'magic_login' && prop) {
-      const v = args.context.magic_login?.[prop]
-      return v == null ? '' : String(v)
-    }
-    if (ns === 'cart' && prop) {
-      const v = args.context.cart?.[prop]
-      return v == null ? '' : String(v)
-    }
-    return ''
+  return s.replace(/\{\{\s*([\w.]+)\s*(?:\|([^}]*))?\}\}/g, (_, key, fallback?: string) => {
+    const value = resolveVariable(String(key), args)
+    return value === '' && fallback !== undefined ? fallback.trim() : value
   })
+}
+
+function resolveVariable(key: string, args: ExecuteArgs): string {
+  const [ns, prop] = key.split('.')
+  if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
+  if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
+  // {{order.X}} and {{customer.X}} are populated by webhook integrations
+  // such as WooCommerce. Missing values render as empty string, matching
+  // the rest of this function's contract — never inject 'undefined'.
+  if (ns === 'order' && prop) {
+    const v = args.context.order?.[prop]
+    return v == null ? '' : String(v)
+  }
+  if (ns === 'customer' && prop) {
+    const v = args.context.customer?.[prop]
+    return v == null ? '' : String(v)
+  }
+  if (ns === 'magic_login' && prop) {
+    const v = args.context.magic_login?.[prop]
+    return v == null ? '' : String(v)
+  }
+  if (ns === 'cart' && prop) {
+    const v = args.context.cart?.[prop]
+    return v == null ? '' : String(v)
+  }
+  return ''
 }
 
 async function appendResults(
@@ -652,6 +913,12 @@ async function appendResults(
   if (status !== null) {
     update.status = status
   }
+  // A run is only a success if NO step failed, including steps inside nested
+  // branches (their scope passes a null status, so the root used to overwrite
+  // the failure with "success").
+  if (update.status === 'success' && merged.some((s) => s.status === 'failed')) {
+    update.status = 'failed'
+  }
   if (errorMessage) update.error_message = errorMessage
   await db.from('automation_logs').update(update).eq('id', logId)
 }
@@ -665,6 +932,29 @@ async function finalizeLog(
   await supabaseAdmin()
     .from('automation_logs')
     .update({ status, error_message: errorMessage })
+    .eq('id', logId)
+}
+
+/**
+ * Final status of a run whose last piece finished inside a resumed branch:
+ * "failed" if any step failed, otherwise "success", but only when no other part
+ * of the same run is still waiting.
+ */
+async function settleRunStatus(logId: string | null) {
+  if (!logId) return
+  const db = supabaseAdmin()
+  const { count } = await db
+    .from('automation_pending_executions')
+    .select('id', { count: 'exact', head: true })
+    .eq('log_id', logId)
+    .in('status', ['pending', 'running'])
+  if ((count ?? 0) > 0) return
+
+  const { data: log } = await db.from('automation_logs').select('steps_executed').eq('id', logId).single()
+  const steps = (log?.steps_executed as AutomationLogStepResult[] | undefined) ?? []
+  await db
+    .from('automation_logs')
+    .update({ status: steps.some((s) => s.status === 'failed') ? 'failed' : 'success' })
     .eq('id', logId)
 }
 

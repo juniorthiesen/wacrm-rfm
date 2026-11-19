@@ -4,7 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import { recalculateUserRFM } from "@/lib/rfm/engine";
 import { runAutomationsForTrigger } from "@/lib/automations/engine";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
-import { ingestOrder } from "@/lib/commerce/order-ingestion";
+import { findContactByPhoneOrEmail, ingestOrder } from "@/lib/commerce/order-ingestion";
+import { ingestCartWebhook, isCartPayload } from "@/lib/commerce/cart-webhook";
 import { extractBirthdayRaw } from "@/lib/commerce/birthday";
 import { normalizePhone } from "@/lib/integrations/phone-normalization";
 import type { AutomationTriggerType } from "@/types";
@@ -162,8 +163,11 @@ async function handleMagicLogin(
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const rawUrl = payload.url ?? "";
   const phone = normalizePhone(payload.user?.phone ?? null);
-  if (!phone) {
-    return { status: 400, body: { error: "Customer phone missing or invalid" } };
+  const emailRaw = (payload.user?.email ?? "").trim().toLowerCase();
+  const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw) ? emailRaw : "";
+  // Either channel is enough: WhatsApp needs a phone, the e-mail channel an address.
+  if (!phone && !email) {
+    return { status: 400, body: { error: "Customer phone and e-mail missing or invalid" } };
   }
   if (!rawUrl) {
     return { status: 400, body: { error: "Magic-login URL missing" } };
@@ -182,14 +186,10 @@ async function handleMagicLogin(
   const uid = parsedUrl?.searchParams.get("uid") ?? "";
   const tokenParam = parsedUrl?.searchParams.get("magic_login") ?? "";
 
-  // Find or create the contact — same shape as the order ingest path.
+  // Find or create the contact — phone first, then e-mail (e-mail-only
+  // customers exist since phone became optional, migration 053).
   let contactId: string | null = null;
-  const { data: existing } = await db
-    .from("contacts")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("phone", phone)
-    .maybeSingle();
+  const existing = await findContactByPhoneOrEmail(db, userId, phone, email || null);
   if (existing?.id) {
     contactId = existing.id as string;
   } else {
@@ -203,9 +203,9 @@ async function handleMagicLogin(
       .from("contacts")
       .insert({
         user_id: userId,
-        phone,
+        phone: phone ?? null,
         name: fullName,
-        email: payload.user?.email ?? null,
+        email: email || null,
       })
       .select("id")
       .single();
@@ -239,8 +239,8 @@ async function handleMagicLogin(
           name: customerName,
           first_name: firstName,
           last_name: lastName,
-          phone,
-          email: payload.user?.email ?? undefined,
+          phone: phone ?? undefined,
+          email: email || undefined,
         },
       },
     });
@@ -599,6 +599,13 @@ export async function POST(request: Request) {
     // their own payload — currently `{ url, user }`. Routing by shape
     // lets the operator use ONE delivery URL for every WC-side hook
     // instead of one per event type.
+    // The checkout plugin's abandoned-cart webhook posts a JSON ARRAY of carts to
+    // whatever URL the operator pastes; accept it here so the generic Woo URL works.
+    if (isCartPayload(payload)) {
+      const r = await ingestCartWebhook(db, userId, config.store_url, payload);
+      return NextResponse.json(r.body, { status: r.status });
+    }
+
     if (
       typeof payload.url === "string" &&
       payload.user &&

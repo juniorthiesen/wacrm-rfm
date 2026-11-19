@@ -17,6 +17,8 @@ import {
   PhoneCall,
   Tag,
   Loader2,
+  ShoppingCart,
+  Link2,
 } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
@@ -49,6 +51,9 @@ const TEMPLATE_ORDER: TemplateSlug[] = [
   "lead_qualifier",
   "follow_up_reminder",
   "promo_offer_follow_up",
+  "reativacao_90_dias",
+  "carrinho_abandonado_email",
+  "link_magico_email",
 ]
 
 const TEMPLATE_ICON: Record<TemplateSlug, typeof Zap> = {
@@ -57,6 +62,9 @@ const TEMPLATE_ICON: Record<TemplateSlug, typeof Zap> = {
   lead_qualifier: Users,
   follow_up_reminder: PhoneCall,
   promo_offer_follow_up: Tag,
+  reativacao_90_dias: Clock,
+  carrinho_abandonado_email: ShoppingCart,
+  link_magico_email: Link2,
 }
 
 export default function AutomationsPage() {

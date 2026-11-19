@@ -19,7 +19,9 @@ export interface Profile {
 export interface Contact {
   id: string;
   user_id: string;
-  phone: string;
+  /** WhatsApp number. `null` for e-mail-only contacts (migration 053):
+   *  any WhatsApp send path must skip a contact without a phone. */
+  phone: string | null;
   name?: string;
   email?: string;
   company?: string;
@@ -311,7 +313,11 @@ export type AutomationTriggerType =
   // Cart Abandonment Recovery hook posting multipart/form-data with
   // order_status=abandoned). Context exposes cart.{checkout_url,
   // coupon_code, total, product_names}.
-  | 'cart_abandoned';
+  | 'cart_abandoned'
+  // Lapsed customers (N days without buying). Enrolled once per person by
+  // /api/automations/recency-cron; see src/lib/automations/regua.ts and
+  // migration 054. Context exposes vars.enrolled_at.
+  | 'recency_reached';
 
 export type AutomationStepType =
   | 'send_message'
@@ -324,6 +330,8 @@ export type AutomationStepType =
   | 'wait'
   | 'condition'
   | 'send_webhook'
+  | 'send_email'
+  | 'create_coupon'
   | 'close_conversation';
 
 export type AutomationLogStatus = 'success' | 'partial' | 'failed';
@@ -344,11 +352,24 @@ export interface TimeBasedTriggerConfig {
   timezone?: string;
 }
 
+/** `recency_reached` trigger: who enters the régua and how fast (see regua.ts). */
+export interface RecencyTriggerConfig {
+  /** Days since the last paid order, window start (inclusive). */
+  min_days: number;
+  /** Window end (inclusive). */
+  max_days: number;
+  /** Max people enrolled per local day, control group included. 0 pauses. */
+  daily_cap: number;
+  /** % held out as control: enrolled and measured, never contacted (0–50). */
+  control_percent: number;
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
+  | RecencyTriggerConfig
   | Record<string, unknown>;
 
 export interface SendMessageStepConfig {
@@ -399,7 +420,10 @@ export type ConditionSubject =
   | 'contact_field'
   | 'tag_presence'
   | 'message_content'
-  | 'time_of_day';
+  | 'time_of_day'
+  // True when the contact placed a paid order after vars.enrolled_at
+  // (set at enrolment by the recency cron). No operand needed.
+  | 'purchased_since_enrollment';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;
@@ -415,6 +439,56 @@ export interface SendWebhookStepConfig {
   body_template?: string;
 }
 
+/**
+ * `send_email` step (migration 053 / src/lib/email). Every text field accepts
+ * the engine's placeholders: {{customer.first_name}}, {{vars.x}}, {{cart.x}},
+ * {{order.x}} and a fallback form {{customer.first_name|linda}}.
+ */
+export interface SendEmailStepConfig {
+  subject: string;
+  preheader?: string;
+  heading: string;
+  /** Paragraphs separated by a blank line. */
+  body: string;
+  cta_label?: string;
+  cta_url?: string;
+  /** Small tinted note under the button, e.g. "Pague no Pix ou em até 6x sem juros." */
+  benefit?: string;
+  /** Coupon box is shown only when this resolves to a non-empty value (e.g. "{{vars.coupon_code}}"). */
+  coupon_code?: string;
+  coupon_headline?: string;
+  coupon_note?: string;
+  /** Default "marketing" (unsubscribe link, daily + frequency limits). */
+  category?: 'marketing' | 'transactional';
+  /** Reporting tag stored on email_messages.campaign_key, e.g. "reativacao_d97". */
+  campaign_key?: string;
+  /**
+   * Default true: respects the per-address gap between marketing e-mails. Set to
+   * false only in sequences the customer triggered (cart recovery: 3 e-mails in
+   * 3 days). The daily cap and the suppression list always apply.
+   */
+  respect_min_gap?: boolean;
+}
+
+/**
+ * `create_coupon` step: asks the connected store (WooCommerce today) for a
+ * single-use coupon tied to the contact's e-mail and stores the code in
+ * `{{vars.<var_name>}}` (default `coupon_code`) for the next steps.
+ */
+export interface CreateCouponStepConfig {
+  /** e.g. "VOLTA" → VOLTA-7KQ2MX */
+  code_prefix?: string;
+  discount_type: 'fixed_cart' | 'percent';
+  /** R$ for fixed_cart, percent for percent. */
+  amount: number;
+  /** Minimum cart in R$. */
+  minimum_amount?: number;
+  /** Days until the coupon expires. */
+  valid_days: number;
+  /** Variable that receives the code. Default "coupon_code". */
+  var_name?: string;
+}
+
 export type AutomationStepConfig =
   | SendMessageStepConfig
   | SendTemplateStepConfig
@@ -425,6 +499,8 @@ export type AutomationStepConfig =
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig
+  | SendEmailStepConfig
+  | CreateCouponStepConfig
   | Record<string, never>
   | Record<string, unknown>;
 
@@ -456,7 +532,9 @@ export interface AutomationStep {
 export interface AutomationLogStepResult {
   step_id: string;
   step_type: AutomationStepType;
-  status: 'success' | 'skipped' | 'failed';
+  // 'retrying': a transient failure; this same step is parked to run again later
+  // (see src/lib/automations/retry.ts). The run continues, it did not fail.
+  status: 'success' | 'skipped' | 'failed' | 'retrying';
   detail?: string;
 }
 

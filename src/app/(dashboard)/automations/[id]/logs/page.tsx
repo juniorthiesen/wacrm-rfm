@@ -7,6 +7,7 @@ import {
   Check,
   Loader2,
   X,
+  Clock,
   ChevronDown,
   ChevronRight,
 } from "lucide-react"
@@ -185,16 +186,28 @@ function StatusBadge({ status }: { status: AutomationLog["status"] }) {
 
 function StepRow({ result }: { result: AutomationLogStepResult }) {
   const ok = result.status === "success"
+  // A transient failure that is parked to run again: in progress, not a failure.
+  const retrying = result.status === "retrying"
   return (
     <li className="flex items-start gap-2 text-xs">
       <span
         className={cn(
           "mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full",
-          ok ? "bg-primary/20 text-primary" : "bg-red-500/20 text-red-400",
+          ok
+            ? "bg-primary/20 text-primary"
+            : retrying
+            ? "bg-amber-500/20 text-amber-400"
+            : "bg-red-500/20 text-red-400",
         )}
         aria-hidden
       >
-        {ok ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+        {ok ? (
+          <Check className="h-3 w-3" />
+        ) : retrying ? (
+          <Clock className="h-3 w-3" />
+        ) : (
+          <X className="h-3 w-3" />
+        )}
       </span>
       <span className="text-slate-300">{result.step_type}</span>
       {result.detail && (

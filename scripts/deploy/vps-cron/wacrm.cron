@@ -1,0 +1,21 @@
+# /etc/cron.d/wacrm — crons do WaCRM rodando no servidor do site.
+# O disparo de broadcasts (/api/broadcasts/drip, a cada 5 min) já existe em
+# /usr/local/bin/wacrm-drip-cron.sh e NÃO está aqui.
+# Horário do servidor: UTC. São Paulo = UTC-3 (sem horário de verão).
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Retoma esperas e novas tentativas (e-mails de carrinho 1 h / 24 h / 72 h, réguas).
+# A cada 5 minutos: é isto que dá precisão ao "esperar 45 minutos" e ao backoff de 1 h.
+*/5 * * * * root /usr/local/bin/wacrm-cron.sh /api/automations/cron 65
+
+# Inscreve a régua de reativação: 09:00 em São Paulo (12:00 UTC), uma vez por dia.
+0 12 * * * root /usr/local/bin/wacrm-cron.sh /api/automations/recency-cron 65
+
+# Aniversariantes: 12:00 em São Paulo (15:00 UTC). Já estava no Vercel; mover só se
+# for tirar do vercel.json.
+# 0 15 * * * root /usr/local/bin/wacrm-cron.sh /api/automations/birthday-cron 65
+
+# RFM diário: 03:00 em São Paulo (06:00 UTC). Já está no Vercel; mover só se for
+# tirar do vercel.json.
+# 0 6 * * * root /usr/local/bin/wacrm-cron.sh /api/rfm/cron 65

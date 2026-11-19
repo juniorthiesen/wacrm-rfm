@@ -20,6 +20,8 @@ import {
   Hourglass,
   GitBranch,
   Webhook,
+  Mail,
+  Ticket,
   CircleSlash,
   Zap,
   Loader2,
@@ -29,6 +31,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { RecencyPanel } from "@/components/automations/recency-panel"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -90,6 +93,8 @@ function getStepMeta(type: AutomationStepType, t: (key: string) => string): Step
     wait: { label: t("automations.stepMeta.wait"), icon: Hourglass, border: "border-l-slate-500" },
     condition: { label: t("automations.stepMeta.condition"), icon: GitBranch, border: "border-l-amber-500" },
     send_webhook: { label: t("automations.stepMeta.send_webhook"), icon: Webhook, border: "border-l-primary" },
+    send_email: { label: t("automations.stepMeta.send_email"), icon: Mail, border: "border-l-primary" },
+    create_coupon: { label: t("automations.stepMeta.create_coupon"), icon: Ticket, border: "border-l-primary" },
     close_conversation: { label: t("automations.stepMeta.close_conversation"), icon: CircleSlash, border: "border-l-primary" },
   }
   return meta[type]
@@ -98,6 +103,8 @@ function getStepMeta(type: AutomationStepType, t: (key: string) => string): Step
 const ADDABLE_STEPS: AutomationStepType[] = [
   "send_message",
   "send_template",
+  "send_email",
+  "create_coupon",
   "add_tag",
   "remove_tag",
   "assign_conversation",
@@ -139,6 +146,8 @@ function getTriggerOptions(t: (key: string) => string) {
     { value: "customer_magic_login_requested" as AutomationTriggerType, label: t("automations.triggerOptions.customer_magic_login_requested"), hint: t("automations.triggerHints.customer_magic_login_requested") },
     { value: "cart_abandoned" as AutomationTriggerType, label: t("automations.triggerOptions.cart_abandoned"), hint: t("automations.triggerHints.cart_abandoned") },
     { value: "birthday_month" as AutomationTriggerType, label: t("automations.triggerOptions.birthday_month"), hint: t("automations.triggerHints.birthday_month") },
+    // Win-back: lapsed customers enrolled once by /api/automations/recency-cron.
+    { value: "recency_reached" as AutomationTriggerType, label: t("automations.triggerOptions.recency_reached"), hint: t("automations.triggerHints.recency_reached") },
   ]
 }
 
@@ -172,6 +181,10 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return { subject: "tag_presence", operand: "", value: "" }
     case "send_webhook":
       return { url: "", headers: {}, body_template: "" }
+    case "send_email":
+      return { subject: "", heading: "", body: "", category: "marketing" }
+    case "create_coupon":
+      return { code_prefix: "VOLTA", discount_type: "fixed_cart", amount: 20, minimum_amount: 100, valid_days: 10 }
     case "close_conversation":
       return {}
     default:
@@ -312,6 +325,11 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
             onTypeChange={(tVal) => patchTop("trigger_type", tVal)}
             onConfigChange={(cVal) => patchTop("trigger_config", cVal)}
           />
+          {isEditing && initial.id && state.trigger_type === "recency_reached" && (
+            <div className="mt-4 w-full">
+              <RecencyPanel automationId={initial.id} />
+            </div>
+          )}
           <StepList
             steps={state.steps}
             parentPath={[]}
@@ -403,6 +421,37 @@ function TriggerCard({
                 }
                 className="bg-slate-800 text-white"
               />
+            )}
+            {type === "recency_reached" && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-500">{t("automations.builder.recencyHelp")}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      ["min_days", "recencyMinLabel", 90],
+                      ["max_days", "recencyMaxLabel", 364],
+                      ["daily_cap", "recencyCapLabel", 100],
+                      ["control_percent", "recencyControlLabel", 10],
+                    ] as const
+                  ).map(([key, label, fallback]) => (
+                    <div key={key}>
+                      <p className="mb-1 text-[11px] text-slate-400">{t(`automations.builder.${label}`)}</p>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={String(config[key] ?? fallback)}
+                        onChange={(e) =>
+                          onConfigChange({
+                            ...config,
+                            [key]: e.target.value === "" ? "" : Number(e.target.value),
+                          })
+                        }
+                        className="bg-slate-800 text-white"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
             {type === "time_based" && (
               <Input
@@ -1268,8 +1317,10 @@ function StepEditor({
               <option value="contact_field">{t("automations.builder.contactFieldOption")}</option>
               <option value="message_content">{t("automations.builder.messageContentOption")}</option>
               <option value="time_of_day">{t("automations.builder.timeOfDayOption")}</option>
+              <option value="purchased_since_enrollment">{t("automations.builder.purchasedSinceEnrollmentOption")}</option>
             </select>
           </FieldBlock>
+          {cfg.subject !== "purchased_since_enrollment" && (
           <FieldBlock label={t("automations.builder.operandLabel")}>
             <Input
               placeholder={
@@ -1286,6 +1337,7 @@ function StepEditor({
               className="bg-slate-800 text-white"
             />
           </FieldBlock>
+          )}
           {(cfg.subject === "contact_field" || cfg.subject === "message_content") && (
             <FieldBlock label={t("automations.builder.valueLabel")}>
               <Input
@@ -1314,6 +1366,146 @@ function StepEditor({
               className="min-h-20 bg-slate-800 font-mono text-xs text-white"
             />
           </FieldBlock>
+        </>
+      )
+    case "send_email":
+      return (
+        <>
+          <p className="text-xs text-slate-400">{t("automations.builder.emailHelp")}</p>
+          <FieldBlock label={t("automations.builder.emailSubjectLabel")}>
+            <Input
+              value={(cfg.subject as string) ?? ""}
+              onChange={(e) => set({ subject: e.target.value })}
+              className="bg-slate-800 text-white"
+            />
+          </FieldBlock>
+          <FieldBlock label={t("automations.builder.emailHeadingLabel")}>
+            <Input
+              value={(cfg.heading as string) ?? ""}
+              onChange={(e) => set({ heading: e.target.value })}
+              className="bg-slate-800 text-white"
+            />
+          </FieldBlock>
+          <FieldBlock label={t("automations.builder.emailBodyLabel")}>
+            <Textarea
+              value={(cfg.body as string) ?? ""}
+              onChange={(e) => set({ body: e.target.value })}
+              className="min-h-28 bg-slate-800 text-white"
+            />
+          </FieldBlock>
+          <div className="grid grid-cols-2 gap-2">
+            <FieldBlock label={t("automations.builder.emailCtaLabelLabel")}>
+              <Input
+                value={(cfg.cta_label as string) ?? ""}
+                onChange={(e) => set({ cta_label: e.target.value })}
+                className="bg-slate-800 text-white"
+              />
+            </FieldBlock>
+            <FieldBlock label={t("automations.builder.emailCtaUrlLabel")}>
+              <Input
+                value={(cfg.cta_url as string) ?? ""}
+                onChange={(e) => set({ cta_url: e.target.value })}
+                placeholder="https://"
+                className="bg-slate-800 text-white"
+              />
+            </FieldBlock>
+          </div>
+          <FieldBlock label={t("automations.builder.emailBenefitLabel")}>
+            <Input
+              value={(cfg.benefit as string) ?? ""}
+              onChange={(e) => set({ benefit: e.target.value })}
+              className="bg-slate-800 text-white"
+            />
+          </FieldBlock>
+          <div className="grid grid-cols-2 gap-2">
+            <FieldBlock label={t("automations.builder.emailCouponCodeLabel")}>
+              <Input
+                value={(cfg.coupon_code as string) ?? ""}
+                onChange={(e) => set({ coupon_code: e.target.value })}
+                className="bg-slate-800 text-white"
+              />
+            </FieldBlock>
+            <FieldBlock label={t("automations.builder.emailCouponHeadlineLabel")}>
+              <Input
+                value={(cfg.coupon_headline as string) ?? ""}
+                onChange={(e) => set({ coupon_headline: e.target.value })}
+                className="bg-slate-800 text-white"
+              />
+            </FieldBlock>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <FieldBlock label={t("automations.builder.emailCategoryLabel")}>
+              <select
+                value={(cfg.category as string) ?? "marketing"}
+                onChange={(e) => set({ category: e.target.value })}
+                className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white"
+              >
+                <option value="marketing">{t("automations.builder.emailCategoryMarketing")}</option>
+                <option value="transactional">{t("automations.builder.emailCategoryTransactional")}</option>
+              </select>
+            </FieldBlock>
+            <FieldBlock label={t("automations.builder.emailCampaignKeyLabel")}>
+              <Input
+                value={(cfg.campaign_key as string) ?? ""}
+                onChange={(e) => set({ campaign_key: e.target.value })}
+                className="bg-slate-800 text-white"
+              />
+            </FieldBlock>
+          </div>
+        </>
+      )
+    case "create_coupon":
+      return (
+        <>
+          <p className="text-xs text-slate-400">{t("automations.builder.couponHelp")}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <FieldBlock label={t("automations.builder.couponPrefixLabel")}>
+              <Input
+                value={(cfg.code_prefix as string) ?? ""}
+                onChange={(e) => set({ code_prefix: e.target.value })}
+                className="bg-slate-800 text-white"
+              />
+            </FieldBlock>
+            <FieldBlock label={t("automations.builder.couponTypeLabel")}>
+              <select
+                value={(cfg.discount_type as string) ?? "fixed_cart"}
+                onChange={(e) => set({ discount_type: e.target.value })}
+                className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white"
+              >
+                <option value="fixed_cart">{t("automations.builder.couponFixedOption")}</option>
+                <option value="percent">{t("automations.builder.couponPercentOption")}</option>
+              </select>
+            </FieldBlock>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <FieldBlock label={t("automations.builder.couponAmountLabel")}>
+              <Input
+                type="number"
+                min={0}
+                value={String(cfg.amount ?? "")}
+                onChange={(e) => set({ amount: e.target.value === "" ? "" : Number(e.target.value) })}
+                className="bg-slate-800 text-white"
+              />
+            </FieldBlock>
+            <FieldBlock label={t("automations.builder.couponMinLabel")}>
+              <Input
+                type="number"
+                min={0}
+                value={String(cfg.minimum_amount ?? "")}
+                onChange={(e) => set({ minimum_amount: e.target.value === "" ? "" : Number(e.target.value) })}
+                className="bg-slate-800 text-white"
+              />
+            </FieldBlock>
+            <FieldBlock label={t("automations.builder.couponValidDaysLabel")}>
+              <Input
+                type="number"
+                min={1}
+                value={String(cfg.valid_days ?? "")}
+                onChange={(e) => set({ valid_days: e.target.value === "" ? "" : Number(e.target.value) })}
+                className="bg-slate-800 text-white"
+              />
+            </FieldBlock>
+          </div>
         </>
       )
     case "close_conversation":
@@ -1354,6 +1546,12 @@ function previewFor(step: BuilderStep, t: (key: string) => string): string {
       return t("automations.builder.whenSubject").replace("{subject}", (step.step_config.subject as string) || "?")
     case "send_webhook":
       return (step.step_config.url as string) || t("automations.builder.noUrl")
+    case "send_email":
+      return (step.step_config.subject as string) || t("automations.builder.noSubject")
+    case "create_coupon": {
+      const percent = step.step_config.discount_type === "percent"
+      return `${percent ? "" : "R$ "}${step.step_config.amount ?? "?"}${percent ? "%" : ""} · ${step.step_config.valid_days ?? "?"} d`
+    }
     default:
       return ""
   }
