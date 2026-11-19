@@ -27,6 +27,7 @@ function makeCart(over: Partial<NormalizedCart> = {}): NormalizedCart {
     total: 79.8,
     currency: "BRL",
     reachedCheckout: true,
+    createdAt: null,
     ...over,
   };
 }
@@ -121,6 +122,23 @@ describe("processCartEvents", () => {
     const summary = await run([makeCart({ externalId: "42" })], later);
     expect(summary.started).toBe(1);
     expect(dispatched).toHaveLength(2);
+  });
+
+  it("records but never starts a sequence for a stale cart (first sync after the webhook is switched on)", async () => {
+    const old = new Date(NOW.getTime() - 3 * DAY).toISOString();
+    const summary = await run([makeCart({ externalId: "old", createdAt: old })]);
+    expect(summary).toMatchObject({ started: 0, skipped: 1, reasons: { stale: 1 } });
+    expect(dispatched).toHaveLength(0);
+    expect(mem.rows.get("old")).toMatchObject({ skip_reason: "stale", sequence_started_at: null });
+  });
+
+  it("still starts a recent cart and a cart whose age is unknown", async () => {
+    const recent = new Date(NOW.getTime() - 40 * 60 * 1000).toISOString();
+    const summary = await run([
+      makeCart({ externalId: "new", email: "a@a.co", createdAt: recent }),
+      makeCart({ externalId: "unknown", email: "b@b.co", createdAt: null }),
+    ]);
+    expect(summary.started).toBe(2);
   });
 
   it("only updates the record for recovered / converted / dismissed carts", async () => {
