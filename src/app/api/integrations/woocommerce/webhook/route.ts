@@ -6,6 +6,7 @@ import { runAutomationsForTrigger } from "@/lib/automations/engine";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { findContactByPhoneOrEmail, ingestOrder } from "@/lib/commerce/order-ingestion";
 import { ingestCartWebhook, isCartPayload } from "@/lib/commerce/cart-webhook";
+import { extractPixCode } from "@/lib/commerce/pix-code";
 import { extractBirthdayRaw } from "@/lib/commerce/birthday";
 import { normalizePhone } from "@/lib/integrations/phone-normalization";
 import type { AutomationTriggerType } from "@/types";
@@ -55,24 +56,6 @@ function statusToTrigger(status: string): AutomationTriggerType | null {
       return null;
   }
 }
-
-// Common meta_data keys used by Brazilian PIX gateways. Each plugin
-// stores the copy-paste payload under a different key, so we probe
-// them in priority order and return the first non-empty value.
-//
-// Sources observed in the wild:
-//   - pix_copiar_colar              — generic / theme-installed
-//   - _dados_cielo_api_pix_qrcode   — Cielo official plugin
-//   - _pix_copy_and_paste           — Loja5 theme
-//   - woo_pix_code                  — Pix for WooCommerce free plugin
-//   - efi_pix_copy_and_paste        — Efí (formerly Gerencianet)
-const PIX_META_KEYS = [
-  "pix_copiar_colar",
-  "_dados_cielo_api_pix_qrcode",
-  "_pix_copy_and_paste",
-  "woo_pix_code",
-  "efi_pix_copy_and_paste",
-] as const;
 
 // Tracking code keys vary by carrier plugin. Order matters — the more
 // specific keys are checked first so a generic `_tracking_code` won't
@@ -694,8 +677,8 @@ export async function POST(request: Request) {
           findMetaValue(payload.meta_data as WooMetaItem[], TRACKING_META_KEYS) ||
           "";
 
-        const pixCode =
-          findMetaValue(payload.meta_data as WooMetaItem[], PIX_META_KEYS) || "";
+        // PagHiper keeps the code nested in `wc_paghiper_data.emv`; see lib/commerce/pix-code.
+        const pixCode = extractPixCode(payload.meta_data);
 
         // "pending"/"on-hold" isn't exclusive to PIX — boleto and even
         // card payments transit through it momentarily — but the only
