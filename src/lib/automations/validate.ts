@@ -1,5 +1,6 @@
 import type { AutomationTriggerType } from '@/types'
 import { parseRecencyConfig } from './regua'
+import { parseAbOperand } from './ab-bucket'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -115,6 +116,13 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       // purchased_since_enrollment reads vars.enrolled_at: it has no operand.
       if (c.subject !== 'purchased_since_enrollment' && !nonEmpty(c.operand)) {
         issues.push({ path: `${path}.operand`, message: 'condition operand is required' })
+      }
+      // ab_bucket: "N:K" with 2 <= N <= 10 and 0 <= K < N, e.g. "3:1".
+      if (c.subject === 'ab_bucket' && nonEmpty(c.operand) && !parseAbOperand(String(c.operand))) {
+        issues.push({
+          path: `${path}.operand`,
+          message: 'A/B split operand must look like "3:1" (group 1 of 3; between 2 and 10 groups)',
+        })
       }
       break
     case 'create_coupon': {

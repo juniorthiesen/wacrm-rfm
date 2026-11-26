@@ -1318,6 +1318,7 @@ function StepEditor({
               <option value="message_content">{t("automations.builder.messageContentOption")}</option>
               <option value="time_of_day">{t("automations.builder.timeOfDayOption")}</option>
               <option value="purchased_since_enrollment">{t("automations.builder.purchasedSinceEnrollmentOption")}</option>
+              <option value="ab_bucket">{t("automations.builder.abBucketOption")}</option>
             </select>
           </FieldBlock>
           {cfg.subject !== "purchased_since_enrollment" && (
@@ -1330,12 +1331,17 @@ function StepEditor({
                   ? t("automations.builder.contactFieldsPlaceholder")
                   : cfg.subject === "tag_presence"
                   ? t("automations.builder.tagIdPlaceholderInput")
+                  : cfg.subject === "ab_bucket"
+                  ? t("automations.builder.abBucketPlaceholder")
                   : ""
               }
               value={(cfg.operand as string) ?? ""}
               onChange={(e) => set({ operand: e.target.value })}
               className="bg-slate-800 text-white"
             />
+            {cfg.subject === "ab_bucket" && (
+              <p className="mt-1 text-xs text-slate-400">{t("automations.builder.abBucketHelp")}</p>
+            )}
           </FieldBlock>
           )}
           {(cfg.subject === "contact_field" || cfg.subject === "message_content") && (

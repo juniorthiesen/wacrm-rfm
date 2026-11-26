@@ -34,11 +34,32 @@ export interface LayoutItem {
   image_url?: string;
 }
 
+export interface LayoutProduct {
+  name: string;
+  image_url: string;
+  /** Already formatted, e.g. "R$ 99,00". */
+  price: string;
+  /** Small accent line under the price, e.g. "R$ 84,15 no Pix". */
+  price_note?: string;
+  url: string;
+}
+
+export interface LayoutHero {
+  image_url: string;
+  /** Shown while images are blocked; also read by screen readers. */
+  alt: string;
+  href?: string;
+}
+
 export interface LayoutInput {
   /** Hidden preview text shown by the inbox list. */
   preheader?: string;
   heading: string;
+  /** Large picture right under the heading. */
+  hero?: LayoutHero;
   paragraphs: string[];
+  /** Product showcase (up to 4): 3 in a row, or 2 + 2 when there are four. */
+  products?: LayoutProduct[];
   items?: LayoutItem[];
   /** Already formatted. Shown under the items when present. */
   total?: string;
@@ -114,6 +135,45 @@ function itemsHtml(items: LayoutItem[], total: string | undefined, ink: string):
   return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:22px 0 0;">${rows}</table>${totalRow}`;
 }
 
+function heroHtml(hero: LayoutHero): string {
+  const img =
+    `<img src="${escapeHtml(safeUrl(hero.image_url))}" width="340" alt="${escapeHtml(hero.alt)}" ` +
+    `style="display:block;width:100%;max-width:340px;height:auto;margin:0 auto;border:0;" />`;
+  const inner = hero.href
+    ? `<a href="${escapeHtml(safeUrl(hero.href))}" style="text-decoration:none;">${img}</a>`
+    : img;
+  return (
+    `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 18px;"><tr>` +
+    `<td align="center">${inner}</td></tr></table>`
+  );
+}
+
+function productsHtml(products: LayoutProduct[], accent: string, ink: string): string {
+  const perRow = products.length === 4 ? 2 : Math.min(products.length, 3);
+  const width = Math.floor(100 / perRow);
+  const cell = (p: LayoutProduct) => {
+    const note = p.price_note
+      ? `<div style="font-size:12px;font-weight:600;line-height:1.4;color:${accent};">${escapeHtml(p.price_note)}</div>`
+      : "";
+    return (
+      `<td width="${width}%" valign="top" align="center" style="width:${width}%;padding:0 5px 16px;${FONT}text-align:center;">` +
+      `<a href="${escapeHtml(safeUrl(p.url))}" style="display:block;text-decoration:none;color:${ink};">` +
+      `<img src="${escapeHtml(safeUrl(p.image_url))}" width="170" alt="${escapeHtml(p.name)}" style="display:block;width:100%;max-width:170px;height:auto;margin:0 auto 8px;border:0;" />` +
+      `<div style="font-size:13px;line-height:1.35;color:${ink};">${escapeHtml(p.name)}</div>` +
+      `<div style="margin-top:3px;font-size:14px;font-weight:600;color:${ink};">${escapeHtml(p.price)}</div>` +
+      note +
+      `</a></td>`
+    );
+  };
+  const filler = `<td width="${width}%" style="width:${width}%;"></td>`;
+  const rows: string[] = [];
+  for (let i = 0; i < products.length; i += perRow) {
+    const slice = products.slice(i, i + perRow);
+    rows.push(`<tr>${slice.map(cell).join("")}${filler.repeat(perRow - slice.length)}</tr>`);
+  }
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:8px 0 6px;">${rows.join("")}</table>`;
+}
+
 function couponHtml(coupon: NonNullable<LayoutInput["coupon"]>, accent: string, ink: string): string {
   const note = coupon.note
     ? `<div style="font-size:12px;line-height:1.5;color:${DEFAULTS.muted};">${escapeHtml(coupon.note)}</div>`
@@ -182,7 +242,9 @@ export function renderEmailLayout(input: LayoutInput, brand: EmailBrand = {}): R
     logoRow +
     `<tr><td style="padding:18px 28px 30px;${FONT}color:${ink};">` +
     `<h1 style="margin:0 0 14px;${FONT}font-size:26px;font-weight:500;line-height:1.2;letter-spacing:0.02em;text-align:center;color:${ink};">${escapeHtml(input.heading)}</h1>` +
+    (input.hero ? heroHtml(input.hero) : "") +
     input.paragraphs.map(paragraphHtml).join("") +
+    (input.products && input.products.length > 0 ? productsHtml(input.products, accent, ink) : "") +
     (input.items && input.items.length > 0 ? itemsHtml(input.items, input.total, ink) : "") +
     (input.coupon ? couponHtml(input.coupon, accent, ink) : "") +
     cta +
@@ -201,6 +263,12 @@ export function renderEmailLayout(input: LayoutInput, brand: EmailBrand = {}): R
   // Plain-text alternative (also what spam filters and screen readers see).
   const lines: string[] = [input.heading, ""];
   for (const p of input.paragraphs) lines.push(p, "");
+  if (input.products && input.products.length > 0) {
+    for (const p of input.products) {
+      lines.push(`- ${p.name}: ${p.price}${p.price_note ? ` (${p.price_note})` : ""}`, `  ${safeUrl(p.url)}`);
+    }
+    lines.push("");
+  }
   if (input.items) {
     for (const i of input.items) {
       lines.push(`- ${i.name}${i.variant ? ` (${i.variant})` : ""} x${i.quantity}: ${i.price}`);
