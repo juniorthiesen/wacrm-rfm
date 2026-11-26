@@ -23,6 +23,7 @@ import { sendEmail } from '@/lib/email/send'
 import { buildStepEmail } from '@/lib/email/step'
 import { supabaseEmailStore } from '@/lib/email/store'
 import { RetryStep, planRetry } from './retry'
+import { inAbBucket } from './ab-bucket'
 
 // ------------------------------------------------------------
 // Public API
@@ -827,6 +828,11 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
         .gt('ordered_at', since)
         .in('status', PAID_ORDER_STATUSES)
       return (count ?? 0) > 0
+    }
+    case 'ab_bucket': {
+      // Stable A/B split: operand "N:K" → true for group K of N (see ab-bucket.ts).
+      if (!args.contactId) return false
+      return inAbBucket(args.automation.id, args.contactId, cfg.operand)
     }
     case 'time_of_day': {
       // operand form "HH:mm-HH:mm" — true if now is within that window

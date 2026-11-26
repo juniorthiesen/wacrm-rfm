@@ -423,7 +423,11 @@ export type ConditionSubject =
   | 'time_of_day'
   // True when the contact placed a paid order after vars.enrolled_at
   // (set at enrolment by the recency cron). No operand needed.
-  | 'purchased_since_enrollment';
+  | 'purchased_since_enrollment'
+  // A/B split: operand "N:K" is true for the K-th (0-based) of N equal groups.
+  // The group is a stable hash of automation + contact, so a person always lands
+  // in the same one. Chain conditions to make N variants.
+  | 'ab_bucket';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;
@@ -444,6 +448,16 @@ export interface SendWebhookStepConfig {
  * the engine's placeholders: {{customer.first_name}}, {{vars.x}}, {{cart.x}},
  * {{order.x}} and a fallback form {{customer.first_name|linda}}.
  */
+export interface EmailProductConfig {
+  name: string;
+  image_url: string;
+  /** Already formatted, e.g. "R$ 99,00". */
+  price: string;
+  /** Small line under the price, e.g. "R$ 84,15 no Pix". */
+  price_note?: string;
+  url: string;
+}
+
 export interface SendEmailStepConfig {
   subject: string;
   preheader?: string;
@@ -452,6 +466,13 @@ export interface SendEmailStepConfig {
   body: string;
   cta_label?: string;
   cta_url?: string;
+  /** Large picture right under the heading (http/https URL; placeholders allowed). */
+  hero_image_url?: string;
+  hero_image_alt?: string;
+  /** Where the picture links to; falls back to `cta_url`. */
+  hero_link_url?: string;
+  /** Product showcase (max 4): photo, name, price and link per product. */
+  products?: EmailProductConfig[];
   /** Small tinted note under the button, e.g. "Pague no Pix ou em até 6x sem juros." */
   benefit?: string;
   /** Coupon box is shown only when this resolves to a non-empty value (e.g. "{{vars.coupon_code}}"). */

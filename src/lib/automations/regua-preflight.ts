@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadStoreConnector } from '@/lib/commerce/connector';
 import { supabaseEmailStore } from '@/lib/email/store';
+import { maxMarketingEmailsPerPath, type PathStepRow } from './email-path';
 import {
   evaluateRegueReadiness,
   parseRecencyConfig,
@@ -23,21 +24,16 @@ export async function loadRegueReadiness(
 ): Promise<Readiness & { emailStepCount: number; hasCouponStep: boolean }> {
   const { data: steps, error } = await db
     .from('automation_steps')
-    .select('step_type, step_config')
+    .select('id, parent_step_id, branch, step_type, step_config')
     .eq('automation_id', automation.id);
   if (error)
     throw new Error(`[regua-preflight] could not read steps: ${error.message}`);
 
-  const list = (steps ?? []) as Array<{
-    step_type: string;
-    step_config: Record<string, unknown> | null;
-  }>;
-  // Transactional e-mail is not subject to the marketing daily limit.
-  const emailStepCount = list.filter(
-    (s) =>
-      s.step_type === 'send_email' &&
-      (s.step_config?.category ?? 'marketing') !== 'transactional'
-  ).length;
+  const list = (steps ?? []) as PathStepRow[];
+  // E-mails ONE person can receive (an A/B split delivers a single variant, so
+  // its branches do not add up). Transactional e-mail is not subject to the
+  // marketing daily limit.
+  const emailStepCount = maxMarketingEmailsPerPath(list);
   const hasCouponStep = list.some((s) => s.step_type === 'create_coupon');
 
   const emailConfig =

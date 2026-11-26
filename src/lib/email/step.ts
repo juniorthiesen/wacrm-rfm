@@ -43,6 +43,44 @@ export function buildStepEmail(
     cta = { label: ctaLabel, url: ctaUrl };
   }
 
+  const isHttp = (u: string) => /^https?:\/\//i.test(u);
+
+  const heroUrl = oneLine(interpolate(cfg.hero_image_url ?? ""));
+  let hero: { image_url: string; alt: string; href?: string } | undefined;
+  if (heroUrl) {
+    if (!isHttp(heroUrl)) return { error: "hero_image_url must be an http(s) URL" };
+    const heroLink = oneLine(interpolate(cfg.hero_link_url ?? "")) || (cta?.url ?? "");
+    hero = {
+      image_url: heroUrl,
+      alt: oneLine(interpolate(cfg.hero_image_alt ?? "")) || heading,
+      href: isHttp(heroLink) ? heroLink : undefined,
+    };
+  }
+
+  // At most 4 products: more would not fit a phone-width grid. A product with a
+  // missing field is a configuration mistake, so fail loudly instead of sending
+  // a broken e-mail to thousands of people.
+  const products: NonNullable<Parameters<typeof renderEmailLayout>[0]["products"]> = [];
+  for (const p of (cfg.products ?? []).slice(0, 4)) {
+    const name = oneLine(interpolate(p.name ?? ""));
+    const image_url = oneLine(interpolate(p.image_url ?? ""));
+    const url = oneLine(interpolate(p.url ?? ""));
+    const price = oneLine(interpolate(p.price ?? ""));
+    if (!name || !image_url || !url || !price) {
+      return { error: "each product needs name, image_url, price and url" };
+    }
+    if (!isHttp(image_url) || !isHttp(url)) {
+      return { error: "product image_url and url must be http(s) URLs" };
+    }
+    products.push({
+      name,
+      image_url,
+      url,
+      price,
+      price_note: oneLine(interpolate(p.price_note ?? "")) || undefined,
+    });
+  }
+
   const couponCode = oneLine(interpolate(cfg.coupon_code ?? ""));
   const coupon = couponCode
     ? {
@@ -56,7 +94,9 @@ export function buildStepEmail(
     {
       preheader: oneLine(interpolate(cfg.preheader ?? "")) || undefined,
       heading,
+      hero,
       paragraphs,
+      products: products.length > 0 ? products : undefined,
       coupon,
       cta,
       benefit: oneLine(interpolate(cfg.benefit ?? "")) || undefined,
