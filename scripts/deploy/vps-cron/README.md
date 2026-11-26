@@ -7,7 +7,7 @@ O WaCRM roda no Vercel (plano Hobby: só 2 crons, 1×/dia). O servidor do site
 | Endpoint | Quando | Para quê |
 |---|---|---|
 | `/api/automations/cron` | a cada 5 min | retoma esperas e **novas tentativas** (carrinho 1 h/24 h/72 h, réguas) |
-| `/api/automations/recency-cron` | 1×/dia, 12:00 UTC (09:00 em SP) | inscreve a régua de reativação |
+| `/api/automations/recency-cron` | a cada 2 min, 12:00–20:58 UTC (09:00–17:58 em SP) | inscreve a régua de reativação (~15 pessoas por chamada; o teto diário limita o total) |
 
 Com o Vercel diário, "esperar 45 min" viraria "até 24 h"; com o cron de 5 min no VPS fica certo.
 
